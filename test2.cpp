@@ -189,6 +189,28 @@ namespace GreenCRDT {
 					if (left_it == right_it) {
 						break;
 					}
+					// should be covered by the above, TODO: check and remove
+					if (left_it == list.end()) {
+						break;
+					}
+
+					//if (left_it->parent_left
+
+					// if it.left < parent_left
+					//	-> insert
+					// else if it.left == parent_left // same left parent
+					//	-> if it.right < parent_right
+					//		-> keep looking ?
+					//	-> else if it.right == parent_right
+					//		-> if list_id.id < it.id
+					//			-> insert
+					//		-> else // we are in the "agent id is tie breaker" zone
+					//			-> continue
+					// else // it.left > parent_left
+					//	-> skip ?
+
+
+					left_it++;
 				} while (true);
 
 
