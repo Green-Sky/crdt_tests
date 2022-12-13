@@ -4,25 +4,21 @@ project(crdt_tests CXX C)
 
 ########################################
 
-add_executable(test1
+add_executable(prot1
 	./test1.cpp
 )
 
-target_compile_features(test1 PUBLIC cxx_std_17)
+target_compile_features(prot1 PUBLIC cxx_std_17)
 
-target_link_libraries(test1 PUBLIC
+target_link_libraries(prot1 PUBLIC
 	nlohmann_json::nlohmann_json
 )
 
 ########################################
 
-add_executable(test2
+add_executable(prot2
 	./test2.cpp
 )
 
-target_compile_features(test2 PUBLIC cxx_std_17)
-
-target_link_libraries(test2 PUBLIC
-	nlohmann_json::nlohmann_json
-)
+target_compile_features(prot2 PUBLIC cxx_std_17)
 
