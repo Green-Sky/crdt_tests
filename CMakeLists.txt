@@ -33,5 +33,7 @@ elseif (${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
 	endif()
 endif()
 
-add_subdirectory(./prototyping)
+add_subdirectory(./prototyping EXCLUDE_FROM_ALL)
+
+add_subdirectory(./version0)
 
