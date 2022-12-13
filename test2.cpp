@@ -4,6 +4,8 @@
 #include <vector>
 #include <map>
 
+#include <numeric>
+#include <random>
 #include <iostream>
 #include <cassert>
 
@@ -222,7 +224,7 @@ namespace GreenCRDT {
 					// parents left and right
 					std::optional<size_t> i_left_idx {std::nullopt};
 					if (at_i.parent_left.has_value()) {
-						i_left_idx = findIdx(parent_left.value());
+						i_left_idx = findIdx(at_i.parent_left.value());
 						if (!i_left_idx.has_value()) {
 							assert(false && "item in list with unknown parent left!!");
 							return false;
@@ -365,6 +367,90 @@ void testConcurrent1(void) {
 	}
 }
 
+struct AddOp {
+	GreenCRDT::ListID id;
+	char value;
+	std::optional<GreenCRDT::ListID> parent_left;
+	std::optional<GreenCRDT::ListID> parent_right;
+};
+
+void randomAddPermutations(const std::vector<AddOp>& ops, const std::string& expected) {
+	// TODO: more then 1k?
+	for (size_t i = 0; i < 1000; i++) {
+		std::minstd_rand rng(1337 + i);
+		std::vector<size_t> ops_todo(ops.size());
+		std::iota(ops_todo.begin(), ops_todo.end(), 0u);
+
+		size_t attempts {0};
+
+		GreenCRDT::TextDocument doc;
+		do {
+			size_t idx = rng() % ops_todo.size();
+
+			if (doc.state.add(ops[ops_todo[idx]].id, ops[ops_todo[idx]].value, ops[ops_todo[idx]].parent_left, ops[ops_todo[idx]].parent_right)) {
+				// only remove if it was possible -> returned true;
+				ops_todo.erase(ops_todo.begin()+idx);
+			}
+
+			attempts++;
+			assert(attempts < 10'000); // in case we run into an endless loop
+		} while (!ops_todo.empty());
+
+		assert(doc.getText() == expected);
+	}
+}
+
+void testInterleave1(void) {
+	const auto agent_a = GreenCRDT::Agent::fromHex("0a00000000000000000000000000000000000000000000000000000000000000");
+	const auto agent_b = GreenCRDT::Agent::fromHex("0b00000000000000000000000000000000000000000000000000000000000000");
+	// agent_a < agent_b
+
+	const std::vector<AddOp> ops {
+		{{agent_a, 0u}, 'a', std::nullopt, std::nullopt},
+		{{agent_a, 1u}, 'a', GreenCRDT::ListID{agent_a, 0u}, std::nullopt},
+		{{agent_a, 2u}, 'a', GreenCRDT::ListID{agent_a, 1u}, std::nullopt},
+		{{agent_b, 0u}, 'b', std::nullopt, std::nullopt},
+		{{agent_b, 1u}, 'b', GreenCRDT::ListID{agent_b, 0u}, std::nullopt},
+		{{agent_b, 2u}, 'b', GreenCRDT::ListID{agent_b, 1u}, std::nullopt},
+	};
+
+	randomAddPermutations(ops, "aaabbb");
+}
+
+void testInterleave2(void) {
+	const auto agent_a = GreenCRDT::Agent::fromHex("0a00000000000000000000000000000000000000000000000000000000000000");
+	const auto agent_b = GreenCRDT::Agent::fromHex("0b00000000000000000000000000000000000000000000000000000000000000");
+	// agent_a < agent_b
+
+	const std::vector<AddOp> ops {
+		{{agent_a, 0u}, 'a', std::nullopt, std::nullopt},
+		{{agent_a, 1u}, 'a', std::nullopt, GreenCRDT::ListID{agent_a, 0u}},
+		{{agent_a, 2u}, 'a', std::nullopt, GreenCRDT::ListID{agent_a, 1u}},
+		{{agent_b, 0u}, 'b', std::nullopt, std::nullopt},
+		{{agent_b, 1u}, 'b', std::nullopt, GreenCRDT::ListID{agent_b, 0u}},
+		{{agent_b, 2u}, 'b', std::nullopt, GreenCRDT::ListID{agent_b, 1u}},
+	};
+
+	randomAddPermutations(ops, "aaabbb");
+}
+
+void testConcurrent2(void) {
+	const auto agent_a = GreenCRDT::Agent::fromHex("0a00000000000000000000000000000000000000000000000000000000000000");
+	const auto agent_b = GreenCRDT::Agent::fromHex("0b00000000000000000000000000000000000000000000000000000000000000");
+	const auto agent_c = GreenCRDT::Agent::fromHex("0c00000000000000000000000000000000000000000000000000000000000000");
+	const auto agent_d = GreenCRDT::Agent::fromHex("0d00000000000000000000000000000000000000000000000000000000000000");
+
+	const std::vector<AddOp> ops {
+		{{agent_a, 0u}, 'a', std::nullopt, std::nullopt},
+		{{agent_c, 0u}, 'c', std::nullopt, std::nullopt},
+
+		{{agent_b, 0u}, 'b', std::nullopt, std::nullopt},
+		{{agent_d, 0u}, 'd', GreenCRDT::ListID{agent_a, 0u}, GreenCRDT::ListID{agent_c, 0u}},
+	};
+
+	randomAddPermutations(ops, "adbc");
+}
+
 void testMain1(void) {
 	GreenCRDT::TextDocument doc;
 
@@ -372,13 +458,6 @@ void testMain1(void) {
 	uint64_t agent0_seq {0};
 	const GreenCRDT::Agent agent1 = GreenCRDT::Agent::fromHex("0100000000000000000000000000000000000000000000000000000000000000");
 	uint64_t agent1_seq {0};
-
-	struct AddOp {
-		GreenCRDT::ListID id;
-		char value;
-		std::optional<GreenCRDT::ListID> parent_left;
-		std::optional<GreenCRDT::ListID> parent_right;
-	};
 
 	const std::vector<AddOp> a0_ops {
 		{{agent0, agent0_seq++}, 'a', std::nullopt, std::nullopt},
@@ -438,6 +517,18 @@ int main(void) {
 
 	std::cout << "testConcurrent1:\n";
 	testConcurrent1();
+	std::cout << std::string(40, '-') << "\n";
+
+	std::cout << "testInterleave1:\n";
+	testInterleave1();
+	std::cout << std::string(40, '-') << "\n";
+
+	std::cout << "testInterleave2:\n";
+	testInterleave2();
+	std::cout << std::string(40, '-') << "\n";
+
+	std::cout << "testConcurrent2:\n";
+	testConcurrent2();
 	std::cout << std::string(40, '-') << "\n";
 
 	std::cout << "testMain1:\n";
