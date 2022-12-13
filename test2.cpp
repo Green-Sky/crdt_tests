@@ -111,14 +111,14 @@ namespace GreenCRDT {
 		};
 
 		// linked list for now
-		std::list<Entry> list;
+		std::vector<Entry> list;
 
 		// number of not deleted entries
 		size_t doc_size {0};
 
 		std::map<Agent, uint64_t> last_seen_seq;
 
-		auto find(const ListID& list_id) {
+		auto findIt(const ListID& list_id) {
 			auto it = list.begin();
 			for (; it != list.end(); it++) {
 				if (it->id == list_id) {
@@ -127,6 +127,24 @@ namespace GreenCRDT {
 			}
 
 			return it;
+		}
+
+		std::optional<size_t> findIdx(const ListID& list_id) {
+#if 0
+			size_t i = 0;
+			for (auto it = list.cbegin(); it != list.cend(); it++, i++) {
+				if (it->id == list_id) {
+					return i;
+				}
+			}
+#endif
+			for (size_t i = 0; i < list.size(); i++) {
+				if (list[i].id == list_id) {
+					return i;
+				}
+			}
+
+			return std::nullopt;
 		}
 
 		// returns false if parent not found. (missing OPs)
@@ -162,59 +180,95 @@ namespace GreenCRDT {
 				// insert parentless into empty doc
 			} else {
 				// find left
-				auto left_it = list.begin();
+				std::optional<size_t> left_idx = std::nullopt;
+				size_t insert_idx = 0;
 				if (parent_left.has_value()) {
-					left_it = find(parent_left.value());
-					if (left_it == list.end()) {
+					left_idx = findIdx(parent_left.value());
+					if (!left_idx.has_value()) {
 						// missing parent left
 						return false;
 					}
 
-					left_it++; // we insert before the it, so we need to go past the left parent
-				}
-				// left_it is not at the first potential insert position
+					// we insert before the it, so we need to go past the left parent
+					insert_idx = left_idx.value() + 1;
+				} // else insert_idx = 0
 
 				// find right
-				auto right_it = list.end();
+				size_t right_idx = list.size();
 				if (parent_right.has_value()) {
-					right_it = find(parent_right.value());
-					if (right_it == list.end()) {
-						// missing parent right
+					auto tmp_right = findIdx(parent_right.value());
+					if (!tmp_right.has_value()) {
 						return false;
+					}
+					right_idx = tmp_right.value();
+				}
+
+				bool scanning {false};
+
+				for(size_t i = insert_idx;; i++) {
+					if (!scanning) {
+						insert_idx = i;
+					}
+					// if right parent / end of doc, insert
+					if (insert_idx == right_idx) {
+						break;
+					}
+					// we ran past right o.o ?
+					if (insert_idx == list.size()) {
+						break;
+					}
+
+					const Entry& at_i = list[i];
+					// parents left and right
+					std::optional<size_t> i_left_idx {std::nullopt};
+					if (at_i.parent_left.has_value()) {
+						i_left_idx = findIdx(parent_left.value());
+						if (!i_left_idx.has_value()) {
+							assert(false && "item in list with unknown parent left!!");
+							return false;
+						}
+					}
+
+					// possibility map
+					//
+					//         | ir < r | ir == r       | ir > r
+					// -------------------------------------
+					// il < l  | insert | insert        | insert
+					// il == l | ?      | agentfallback | ?
+					// il > l  | skip   | skip          | skip
+
+					if (i_left_idx < left_idx) {
+						break;
+					} else if (i_left_idx == left_idx) {
+						// get i parent_right
+						size_t i_right_idx = list.size();
+						if (at_i.parent_right.has_value()) {
+							auto tmp_right = findIdx(at_i.parent_right.value());
+							if (!tmp_right.has_value()) {
+								assert(false && "item in list with unknown parent right!!");
+								return false;
+							}
+							i_right_idx = tmp_right.value();
+						}
+
+						if (i_right_idx < right_idx) {
+							scanning = true;
+						} else if (i_right_idx == right_idx) {
+							// agent id tie breaker
+							if (list_id.id < at_i.id.id) {
+								break;
+							} else {
+								scanning = false;
+							}
+						} else { // i_right_idx > right_idx
+							scanning = false;
+						}
+					} else { // il > l
+						// do nothing
 					}
 				}
 
-				do {
-					// if rightmost / end of doc, insert
-					if (left_it == right_it) {
-						break;
-					}
-					// should be covered by the above, TODO: check and remove
-					if (left_it == list.end()) {
-						break;
-					}
-
-					//if (left_it->parent_left
-
-					// if it.left < parent_left
-					//	-> insert
-					// else if it.left == parent_left // same left parent
-					//	-> if it.right < parent_right
-					//		-> keep looking ?
-					//	-> else if it.right == parent_right
-					//		-> if list_id.id < it.id
-					//			-> insert
-					//		-> else // we are in the "agent id is tie breaker" zone
-					//			-> continue
-					// else // it.left > parent_left
-					//	-> skip ?
-
-
-					left_it++;
-				} while (true);
-
-
-				list.emplace(left_it, Entry{
+				list.emplace(list.begin() + insert_idx, Entry{
 					list_id,
 					parent_left,
 					parent_right,
