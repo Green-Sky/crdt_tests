@@ -1,0 +1,26 @@
+
+adding an event listener to local buffer:
+:au CursorHold <buffer>  echo 'hold'
+
+event groups:
+:augroup uncompress
+:  au!
+:  au BufEnter *.gz	%!gunzip
+:augroup END
+
+
+:au TextChanged <buffer> call ch_sendexpr(channel, 'changed')
+:au TextChangedI <buffer> call ch_sendexpr(channel, 'changed_i')
+
+":au TextChanged <buffer> call ch_sendexpr(channel, ['changed', 'x': col('.'), 'y': line('.')])
+:au TextChanged <buffer> call ch_sendexpr(channel, ['changed', getpos('.')])
+:au TextChangedI <buffer> call ch_sendexpr(channel, 'changed_i')
+
+
+pseudocode for TextChanged diffing:
+
+" not enough, maybe marks?
+start_pos = min(last_pos, now_pos)
+end_pos = max(last_pos, now_pos)
+
+
