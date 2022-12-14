@@ -6,6 +6,8 @@
 #include <variant>
 #include <vector>
 
+#include <iostream> // debug
+
 namespace GreenCRDT {
 
 template<typename AgentType>
@@ -37,14 +39,14 @@ struct TextDocument {
 	}
 
 	static std::vector<Op> text2adds(
-		const AgentType& agent, uint64_t& last_seq,
+		const AgentType& agent, uint64_t seq, // seq is the first seq
 		std::optional<typename ListType::ListID> parent_left,
 		std::optional<typename ListType::ListID> parent_right,
 		std::string_view text
 	) {
 		std::vector<Op> ops;
 		for (size_t i = 0; i < text.size(); i++) {
-			typename ListType::ListID new_id {agent, ++last_seq};
+			typename ListType::ListID new_id {agent, seq++};
 
 			ops.emplace_back(typename ListType::OpAdd{
 				new_id,
@@ -68,7 +70,7 @@ struct TextDocument {
 	) {
 		// TODO: look up typesystem and fix (move? decltype?)
 		std::vector<Op> ops = text2adds(
-			local_agent, state.last_seen_seq[local_agent],
+			local_agent, state.last_seen_seq.count(local_agent) ? state.last_seen_seq[local_agent] : 0u,
 			parent_left,
 			parent_right,
 			text
@@ -77,10 +79,12 @@ struct TextDocument {
 		// TODO: make this better
 		// and apply
 		for (const auto& op : ops) {
-			if constexpr (std::holds_alternative<typename ListType::OpAdd>(op)) {
+			if(std::holds_alternative<typename ListType::OpAdd>(op)) {
 				const auto& add_op = std::get<typename ListType::OpAdd>(op);
-				state.add(add_op.id, add_op.value, add_op.parent_left, add_op.parent_right);
-			} else if constexpr (std::holds_alternative<typename ListType::OpDel>(op)) {
+				//std::cout << "a:" << add_op.id.id << " s:" << add_op.id.seq << " v:" << add_op.value << "\n";
+				bool r = state.add(add_op.id, add_op.value, add_op.parent_left, add_op.parent_right);
+				assert(r);
+			} else if (std::holds_alternative<typename ListType::OpDel>(op)) {
 				const auto& del_op = std::get<typename ListType::OpDel>(op);
 				state.del(del_op.id);
 			} else {
@@ -134,25 +138,95 @@ struct TextDocument {
 
 	// generates ops from the difference
 	// note: rn it only creates 1 diff patch
-	std::vector<Op> merge(std::string_view other_text) {
-		if (other_text.empty()) {
-			return {};
+	std::vector<Op> merge(std::string_view text) {
+		// cases:
+		// - [ ] text is empty
+		// - [x] doc is empty (deep)
+		// - [ ] doc is empty (shallow) // interesting?
+		//
+		// - [x] no changes -> change_start will go through to end
+		//
+		// not at start or end:
+		// - [ ] single char added -> doc.start > doc.end && text.start == text.end -> emit add
+		// - [ ] single char deleted -> doc.start == doc.end && text.start > text.end -> emit del
+		// - [ ] single char replaced -> doc.start == doc.end && text.start == text.end -> emit del, emit add
+		//
+		// - [ ] 2 chars added(together) -> doc.start > doc.end && text.start < text.end -> emit 2add
+		// - [ ] 2 chars deleted(together) -> doc.start < doc.end && text.start > text.end -> emit 2del
+		// - [ ] 2 chars replaced(together) -> doc.start == doc.end && text.start == text.end -> emit 2del, 2add
+
+
+		if (text.empty()) {
+			if (state.list.empty()) {
+				return {};
+			} else {
+				assert(false && "impl me");
+				return {};
+			}
 		}
+		// text not empty
 
 		if (state.list.empty()) {
 			return addText(
 				std::nullopt,
 				std::nullopt,
-				other_text
+				text
 			);
 		}
 
+		// neither empty
+
 		// find start and end of changes
 		// start
-		size_t list_idx_start = 0;
-		size_t other_idx_start = 0;
-		//for (; idx_start < state.list.size(); idx_start++) {}
+		size_t list_start = 0;
+		size_t text_start = 0;
+		bool differ = false;
+		for (; list_start < state.list.size() && text_start < text.size();) {
+			// jump over tombstones
+			if (!state.list[list_start].value.has_value()) {
+				list_start++;
+				continue;
+			}
 
+			if (state.list[list_start].value != text[text_start]) {
+				differ = true;
+				break;
+			}
+
+			list_start++;
+			text_start++;
+		}
+
+		// doc and text dont differ
+		if (!differ) {
+			return {};
+		}
+
+		std::cout << "list.size: " << state.list.size() << "(" << getText().size() << ")" << " text.size: " << text.size() << "\n";
+		std::cout << "list_start: " << list_start << " text_start: " << text_start << "\n";
+
+		// +1 so i can have unsigned
+		size_t list_end = state.list.size();
+		size_t text_end = text.size();
+		for (; list_end > 0 && text_end > 0 && list_end >= list_start && text_end >= text_start;) {
+			// jump over tombstones
+			if (!state.list[list_end-1].value.has_value()) {
+				list_end--;
+				continue;
+			}
+
+			if (state.list[list_end-1].value.value() != text[text_end-1]) {
+				break;
+			}
+
+			list_end--;
+			text_end--;
+		}
+
+		std::cout << "list_end: " << list_end << " text_end: " << text_end << "\n";
+
+		assert(false && "implement me");
+		return {};
 	}
 };
 
