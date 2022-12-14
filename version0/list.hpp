@@ -35,6 +35,20 @@ struct List {
 		}
 	};
 
+	// almost the same as entry
+	struct OpAdd {
+		ListID id;
+
+		std::optional<ListID> parent_left;
+		std::optional<ListID> parent_right;
+
+		ValueType value;
+	};
+
+	struct OpDel {
+		ListID id;
+	};
+
 	// TODO: replace with SoA
 	struct Entry {
 		ListID id;
