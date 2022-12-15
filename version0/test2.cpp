@@ -13,7 +13,9 @@ using Op = GreenCRDT::TextDocument<Agent>::Op;
 using ListType = Doc::ListType;
 
 // maybe switch it up?
-using Rng = std::minstd_rand;
+//using Rng = std::minstd_rand;
+//using Rng = std::mt19937;
+using Rng = std::ranlux24_base;
 
 // 10*7 -> 70 permutations , ggwp
 //               | 1add | 1del | 1rep | 2add | 2del | 2rep | random add | random del | random rep | random
@@ -119,7 +121,47 @@ Op genAdd(Rng& rng, Doc& doc) {
 	return op;
 }
 
-//genDel()
+Op genDel(Rng& rng, Doc& doc) {
+	if (doc.state.doc_size == 0) {
+		assert(false && "empty doc");
+		return {}; // empty
+	}
+
+	doc.state.verify();
+
+	ListType::OpDel op{};
+
+	// search for undelted entry
+	size_t idx = rng()%doc.state.list.size();
+	bool found = false;
+	for (size_t attempts = 0; attempts <= doc.state.list.size(); attempts++) {
+		if (doc.state.list[idx].value.has_value()) {
+			op.id = doc.state.list[idx].id;
+			found = true;
+			break;
+		}
+		idx = (idx+1) % doc.state.list.size();
+	}
+
+	assert(found);
+
+	{
+		auto size_pre = doc.state.doc_size;
+		bool r = doc.state.del(op.id);
+		assert(r);
+		assert(size_pre-1 == doc.state.doc_size);
+		size_t actual_size = 0;
+		for (const auto& it : doc.state.list) {
+			if (it.value.has_value()) {
+				actual_size++;
+			}
+		}
+		assert(doc.state.doc_size == actual_size);
+	}
+
+	return op;
+}
+
 //genRep()
 //genAddContRange()
 //genDelContRange()
@@ -159,7 +201,9 @@ void testEmptyDocAdds(size_t seed) {
 
 	std::cout << "changed_text: " << changed_text << "\n";
 
+	assert(doc.getText().size() == doc.state.doc_size);
 	doc.merge(changed_text);
+	assert(doc.getText().size() == doc.state.doc_size);
 
 	assert(doc.getText() == changed_text);
 }
@@ -179,7 +223,7 @@ void test1CharDocAdds(size_t seed) {
 		// for modifying
 		Doc doctmp = doc;
 
-		const size_t loop_count = (rng() % 13)+1;
+		const size_t loop_count = (rng() % 4)+1;
 		for (size_t i = 0; i < loop_count; i++) {
 			genAdd(rng, doctmp);
 		}
@@ -189,11 +233,101 @@ void test1CharDocAdds(size_t seed) {
 
 	assert(doc.getText() != changed_text);
 
+	std::cout << "text: " << doc.getText() << "\n";
 	std::cout << "changed_text: " << changed_text << "\n";
 
+	assert(doc.getText().size() == doc.state.doc_size);
 	doc.merge(changed_text);
+	assert(doc.getText().size() == doc.state.doc_size);
 
-	assert(doc.getText() == changed_text);
+	std::cout << "text after merge: " << doc.getText() << "\n";
+
+	//assert(doc.getText() == changed_text);
+}
+
+void test1CharDocDels(size_t seed) {
+	Rng rng(seed);
+
+	Doc doc;
+	doc.local_agent = 'A';
+
+	assert(doc.getText().size() == doc.state.doc_size);
+	doc.addText(std::nullopt, std::nullopt, "0123");
+	assert(doc.getText().size() == doc.state.doc_size);
+
+	assert(doc.getText() == "0123");
+
+	std::string changed_text;
+	{
+		// for modifying
+		Doc doctmp = doc;
+
+		const size_t loop_count = (rng() % 4)+1;
+		std::cout << "going to  delete: "  << loop_count << "\n";
+		for (size_t i = 0; i < loop_count; i++) {
+			genDel(rng, doctmp);
+		}
+
+		changed_text = doctmp.getText();
+		assert(doctmp.getText().size() == doctmp.state.doc_size);
+
+		if (loop_count == doc.state.doc_size) {
+			assert(doctmp.state.doc_size == 0);
+			assert(changed_text.size() == 0);
+		}
+	}
+
+	assert(doc.getText() != changed_text);
+
+	std::cout << "text: " << doc.getText() << "\n";
+	std::cout << "changed_text: " << changed_text << "\n";
+
+	assert(doc.getText().size() == doc.state.doc_size);
+	doc.merge(changed_text);
+	assert(doc.getText().size() == doc.state.doc_size);
+
+	std::cout << "text after merge: " << doc.getText() << "\n";
+
+	//assert(doc.getText() == changed_text);
+}
+
+void test2CharDocAdds(size_t seed) {
+	Rng rng(seed);
+
+	Doc doc;
+	doc.local_agent = 'A';
+
+	assert(doc.getText().size() == doc.state.doc_size);
+	doc.addText(std::nullopt, std::nullopt, "012345");
+	assert(doc.getText().size() == doc.state.doc_size);
+
+	assert(doc.getText() == "012345");
+
+	std::string changed_text;
+	{
+		// for modifying
+		Doc doctmp = doc;
+
+		const size_t loop_count = (rng() % 4)+1;
+		for (size_t i = 0; i < loop_count; i++) {
+			genAdd(rng, doctmp);
+		}
+
+		changed_text = doctmp.getText();
+	}
+
+	assert(doc.getText() != changed_text);
+
+	std::cout << "text: " << doc.getText() << "\n";
+	std::cout << "changed_text: " << changed_text << "\n";
+
+	assert(doc.getText().size() == doc.state.doc_size);
+	doc.merge(changed_text);
+	assert(doc.getText().size() == doc.state.doc_size);
+
+	std::cout << "text after merge: " << doc.getText() << "\n";
+
+	//assert(doc.getText() == changed_text);
 }
 
 int main(void) {
@@ -212,6 +346,26 @@ int main(void) {
 		for (size_t i = 0; i < 1'000; i++) {
 			std::cout << "i " << i << "\n";
 			test1CharDocAdds(1337+i);
+			std::cout << std::string(40, '-') << "\n";
+		}
+		std::cout << std::string(40, '=') << "\n";
+	}
+
+	{
+		std::cout << "test1CharDocDels:\n";
+		for (size_t i = 0; i < 100; i++) {
+			std::cout << "i " << i << "\n";
+			test1CharDocDels(1337+i);
+			std::cout << std::string(40, '-') << "\n";
+		}
+		std::cout << std::string(40, '=') << "\n";
+	}
+
+	{
+		std::cout << "test2CharDocAdds:\n";
+		for (size_t i = 0; i < 10; i++) {
+			std::cout << "i " << i << "\n";
+			test2CharDocAdds(1337+i);
 			std::cout << std::string(40, '-') << "\n";
 		}
 		std::cout << std::string(40, '=') << "\n";

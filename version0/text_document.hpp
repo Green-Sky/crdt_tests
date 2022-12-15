@@ -30,10 +30,12 @@ struct TextDocument {
 		std::string text;
 
 		for (const auto& it : state.list) {
-			if (it.value) {
+			if (it.value.has_value()) {
 				text += it.value.value();
 			}
 		}
+
+		//assert(text.size() == state.doc_size);
 
 		return text;
 	}
@@ -108,7 +110,7 @@ struct TextDocument {
 				assert(false && "cant find left");
 				return {};
 			}
-			first_idx = res;
+			first_idx = res.value();
 		}
 
 		size_t last_idx = state.list.size();
@@ -118,7 +120,7 @@ struct TextDocument {
 				assert(false && "cant find right");
 				return {};
 			}
-			last_idx = res;
+			last_idx = res.value();
 		}
 
 		std::vector<Op> ops;
@@ -130,7 +132,7 @@ struct TextDocument {
 
 			// TODO: do delets get a seq?????
 
-			state.list[i].value = std::nullopt;
+			state.del(state.list[i].id);
 		}
 
 		return ops;
@@ -158,10 +160,11 @@ struct TextDocument {
 
 		if (text.empty()) {
 			if (state.list.empty()) {
+				// no op
 				return {};
 			} else {
-				assert(false && "impl me");
-				return {};
+				// delete all
+				return delRange(std::nullopt, std::nullopt);
 			}
 		}
 		// text not empty
@@ -188,7 +191,7 @@ struct TextDocument {
 				continue;
 			}
 
-			if (state.list[list_start].value != text[text_start]) {
+			if (state.list[list_start].value.value() != text[text_start]) {
 				differ = true;
 				break;
 			}
@@ -198,7 +201,7 @@ struct TextDocument {
 		}
 
 		// doc and text dont differ
-		if (!differ) {
+		if (!differ && list_start == state.list.size() && text_start == text.size()) {
 			return {};
 		}
 
@@ -225,8 +228,21 @@ struct TextDocument {
 
 		std::cout << "list_end: " << list_end << " text_end: " << text_end << "\n";
 
-		assert(false && "implement me");
-		return {};
+		std::vector<Op> ops;
+
+		// 1. clear range (del all list_start - list_end)
+		if (list_start <= list_end && list_start < state.list.size()) {
+			ops = delRange(
+				state.list[list_start].id,
+				list_end < state.list.size() ? std::make_optional(state.list[list_end].id) : std::nullopt
+			);
+			std::cout << "deleted: " << ops.size() << "\n";
+		}
+
+		// 2. add range (add all text_start - text_end)
+
+		//assert(false && "implement me");
+		return ops;
 	}
 };
 

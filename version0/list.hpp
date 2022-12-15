@@ -69,7 +69,8 @@ struct List {
 
 	std::map<AgentType, uint64_t> last_seen_seq;
 
-	std::optional<size_t> findIdx(const ListID& list_id) {
+	std::optional<size_t> findIdx(const ListID& list_id) const {
+		verify();
 		for (size_t i = 0; i < list.size(); i++) {
 			if (list[i].id == list_id) {
 				return i;
@@ -83,6 +84,7 @@ struct List {
 	// based on YjsMod https://github.com/josephg/reference-crdts/blob/9f4f9c3a97b497e2df8ae4473d1e521d3c3bf2d2/crdts.ts#L293-L348
 	// which is a modified Yjs(YATA) algo
 	bool add(const ListID& list_id, const ValueType& value, const std::optional<ListID>& parent_left, const std::optional<ListID>& parent_right) {
+		verify();
 		// check agent op order
 		if (!last_seen_seq.count(list_id.id)) {
 			// we dont know this agent yet, first seq needs to be 0
@@ -96,23 +98,15 @@ struct List {
 			}
 		}
 
+		size_t insert_idx = 0;
 		if (list.empty()) {
 			if (parent_left.has_value() || parent_right.has_value()) {
 				// empty, missing parents
 				return false;
 			}
-
-			// insert parentless into empty doc
-			list.emplace(list.begin(), Entry{
-				list_id,
-				parent_left,
-				parent_right,
-				value
-			});
 		} else {
 			// find left
 			std::optional<size_t> left_idx = std::nullopt;
-			size_t insert_idx = 0;
 			if (parent_left.has_value()) {
 				left_idx = findIdx(parent_left.value());
 				if (!left_idx.has_value()) {
@@ -199,34 +193,54 @@ struct List {
 				}
 			}
 
-			list.emplace(list.begin() + insert_idx, Entry{
-				list_id,
-				parent_left,
-				parent_right,
-				value
-			});
 		}
+
+		list.emplace(list.begin() + insert_idx, Entry{
+			list_id,
+			parent_left,
+			parent_right,
+			value
+		});
 
 		doc_size++;
 		last_seen_seq[list_id.id] = list_id.seq;
+		verify();
 		return true;
 	}
 
 	// returns false if not found
 	bool del(const ListID& id) {
-		auto it = list.begin();
-		for (; it != list.end(); it++) {
-			if (it->id == id) {
-				it->value = std::nullopt;
+		verify();
+		for (auto& it : list) {
+			if (it.id == id) {
+				if (it.value.has_value()) {
+					it.value.reset();
 
-				assert(doc_size > 0);
-				doc_size--;
-				return true;
+					doc_size--;
+					verify();
+					return true;
+				} else {
+					verify();
+					return false; // TODO: allow double deletes?,,,, need ids
+				}
 			}
 		}
 
+		verify();
+		assert(false);
+
 		// not found
 		return false;
+	}
+
+	void verify(void) const {
+		size_t actual_size = 0;
+		for (const auto& it : list) {
+			if (it.value.has_value()) {
+				actual_size++;
+			}
+		}
+		assert(doc_size == actual_size);
 	}
 };
 
