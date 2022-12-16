@@ -1,5 +1,5 @@
-#include "./list.hpp"
-#include "./text_document.hpp"
+#include <crdt/list.hpp>
+#include <crdt/text_document.hpp>
 
 #include <numeric>
 #include <random>
