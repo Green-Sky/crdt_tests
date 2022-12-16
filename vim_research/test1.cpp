@@ -10,8 +10,8 @@
 
 // single letter agent, for testing only
 using Agent = char;
-using DocType = GreenCRDT::TextDocument<Agent>;
-using ListType = DocType::ListType;
+using Doc = GreenCRDT::TextDocument<Agent>;
+using ListType = Doc::ListType;
 
 static bool send_command(zed_net_socket_t* remote_socket, const std::string_view mode, const std::string_view command) {
 	auto j = nlohmann::json::array();
@@ -28,9 +28,6 @@ static bool send_command(zed_net_socket_t* remote_socket, const std::string_view
 
 static bool send_setup(zed_net_socket_t* remote_socket) {
 	return send_command(remote_socket, "ex",
-	//"function! GreenCRDT_CheckTimeAndSendState()",
-	//"endfunction",
-	//"function! GreenCRDT_CheckTimeAndSendState() | endfunction",
 
 // vars
 R"(
@@ -39,7 +36,7 @@ let b:green_crdt_dirty = v:true
 )"
 
 R"(
-function! GreenCRDTTimerCallback(timer)
+function! GreenCRDTTimerCallback(timer) abort
 	let b:green_crdt_timer_can_send = v:true
 	call GreenCRDTCheckTimeAndSendState()
 endfunction
@@ -59,7 +56,7 @@ endfunction
 R"(
 function! GreenCRDTChangeEvent()
 	let b:green_crdt_dirty = v:true
-	GreenCRDTCheckTimeAndSendState()
+	call GreenCRDTCheckTimeAndSendState()
 endfunction
 )"
 
@@ -74,7 +71,10 @@ function! GreenCRDTStop()
 	augroup END
 	call ch_close(b:channel)
 	delfunction GreenCRDTCheckTimeAndSendState
+	delfunction GreenCRDTTimerCallback
+	delfunction GreenCRDTChangeEvent
 	"delfunction GreenCRDTStop
+	let b:green_crdt_timer_can_send = v:true
 endfunction
 )"
 
@@ -83,8 +83,8 @@ R"(
 function! GreenCRDTSetupEvents() abort
 	augroup green_crdt
 		au!
-		au TextChanged <buffer> call GreenCRDTCheckTimeAndSendState()
-		au TextChangedI <buffer> call GreenCRDTCheckTimeAndSendState()
+		au TextChanged <buffer> call GreenCRDTChangeEvent()
+		au TextChangedI <buffer> call GreenCRDTChangeEvent()
 	augroup END
 endfunction
 call GreenCRDTSetupEvents()
@@ -141,6 +141,7 @@ int main(void) {
 	send_setup(&remote_socket);
 	// send doauto text changed for inital buffer
 
+	Doc doc;
 	while (true) {
 		// 10MiB
 		auto buffer = std::make_unique<std::array<uint8_t, 1024*1024*10>>();
@@ -231,7 +232,10 @@ int main(void) {
 					new_text += '\n';
 				}
 
-				//std::cout << "new_text: " << new_text << "\n";
+				const auto ops = doc.merge(new_text);
+				if (!ops.empty()) {
+					std::cout << "ops.size: " << ops.size() << "\n";
+				}
 			} else {
 				std::cout << "unknown command '" << command << "'\n";
 			}
