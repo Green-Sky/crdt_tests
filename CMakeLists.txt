@@ -19,6 +19,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 #option(BUILD_TESTING "Enable testing with ctest." OFF)
 
 add_subdirectory(./external/json)
+add_subdirectory(./external/zed_net)
 
 # Bump up warning levels appropriately for clang, gcc & msvc
 if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
@@ -36,4 +37,6 @@ endif()
 add_subdirectory(./prototyping EXCLUDE_FROM_ALL)
 
 add_subdirectory(./version0)
+
+add_subdirectory(./vim_research)
 
