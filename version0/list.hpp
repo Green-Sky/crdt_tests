@@ -35,6 +35,7 @@ struct List {
 		}
 	};
 
+	// TODO: move ops up?
 	// almost the same as entry
 	struct OpAdd {
 		ListID id;
@@ -61,7 +62,7 @@ struct List {
 		std::optional<ValueType> value;
 	};
 
-	// TODO: use something better
+	// TODO: use something better, edit: this seems fine
 	std::vector<Entry> list;
 
 	// number of not deleted entries
@@ -192,7 +193,6 @@ struct List {
 					// do nothing
 				}
 			}
-
 		}
 
 		list.emplace(list.begin() + insert_idx, Entry{
@@ -227,12 +227,11 @@ struct List {
 		}
 
 		verify();
-		assert(false);
-
 		// not found
 		return false;
 	}
 
+	// TODO: only in debug?
 	void verify(void) const {
 		size_t actual_size = 0;
 		for (const auto& it : list) {

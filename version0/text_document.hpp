@@ -2,11 +2,9 @@
 
 #include "./list.hpp"
 
-#include <optional>
 #include <variant>
-#include <vector>
 
-#include <iostream> // debug
+//#include <iostream> // debug
 
 namespace GreenCRDT {
 
@@ -17,6 +15,7 @@ struct TextDocument {
 
 	using Op = std::variant<typename ListType::OpAdd, typename ListType::OpDel>;
 
+	// TODO: implement
 	struct Cursor {
 		AgentType who;
 		typename ListType::ListID pos;
@@ -163,23 +162,6 @@ struct TextDocument {
 	// generates ops from the difference
 	// note: rn it only creates 1 diff patch
 	std::vector<Op> merge(std::string_view text) {
-		// cases:
-		// - [ ] text is empty
-		// - [x] doc is empty (deep)
-		// - [ ] doc is empty (shallow) // interesting?
-		//
-		// - [x] no changes -> change_start will go through to end
-		//
-		// not at start or end:
-		// - [ ] single char added -> doc.start > doc.end && text.start == text.end -> emit add
-		// - [ ] single char deleted -> doc.start == doc.end && text.start > text.end -> emit del
-		// - [ ] single char replaced -> doc.start == doc.end && text.start == text.end -> emit del, emit add
-		//
-		// - [ ] 2 chars added(together) -> doc.start > doc.end && text.start < text.end -> emit 2add
-		// - [ ] 2 chars deleted(together) -> doc.start < doc.end && text.start > text.end -> emit 2del
-		// - [ ] 2 chars replaced(together) -> doc.start == doc.end && text.start == text.end -> emit 2del, 2add
-
-
 		if (text.empty()) {
 			if (state.list.empty()) {
 				// no op
@@ -198,7 +180,6 @@ struct TextDocument {
 				text
 			);
 		}
-
 		// neither empty
 
 		// find start and end of changes
@@ -227,8 +208,8 @@ struct TextDocument {
 			return {};
 		}
 
-		std::cout << "list.size: " << state.list.size() << "(" << getText().size() << ")" << " text.size: " << text.size() << "\n";
-		std::cout << "list_start: " << list_start << " text_start: " << text_start << "\n";
+		//std::cout << "list.size: " << state.list.size() << "(" << getText().size() << ")" << " text.size: " << text.size() << "\n";
+		//std::cout << "list_start: " << list_start << " text_start: " << text_start << "\n";
 
 		// +1 so i can have unsigned
 		size_t list_end = state.list.size();
@@ -248,7 +229,7 @@ struct TextDocument {
 			text_end--;
 		}
 
-		std::cout << "list_end: " << list_end << " text_end: " << text_end << "\n";
+		//std::cout << "list_end: " << list_end << " text_end: " << text_end << "\n";
 
 		std::vector<Op> ops;
 
@@ -258,10 +239,10 @@ struct TextDocument {
 				state.list[list_start].id,
 				list_end < state.list.size() ? std::make_optional(state.list[list_end].id) : std::nullopt
 			);
-			std::cout << "deleted: " << ops.size() << "\n";
+			//std::cout << "deleted: " << ops.size() << "\n";
 		}
 
-		std::cout << "text between: " << getText() << "\n";
+		//std::cout << "text between: " << getText() << "\n";
 
 		// 2. add range (add all text_start - text_end)
 		if (text_start < text_end) {
@@ -270,7 +251,7 @@ struct TextDocument {
 				list_start == state.list.size() ? std::nullopt :std::make_optional(state.list.at(list_start).id),
 				text.substr(text_start, text_end-text_start)
 			);
-			std::cout << "added: " << tmp_add_ops.size() << "\n";
+			//std::cout << "added: " << tmp_add_ops.size() << "\n";
 			ops.insert(ops.end(), tmp_add_ops.begin(), tmp_add_ops.end());
 		}
 

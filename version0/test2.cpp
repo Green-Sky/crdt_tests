@@ -320,7 +320,7 @@ void test2CharDocAdds(size_t seed) {
 		// for modifying
 		Doc doctmp = doc;
 
-		const size_t loop_count = (rng() % 4)+1;
+		const size_t loop_count = (rng() % 6)+1;
 		for (size_t i = 0; i < loop_count; i++) {
 			genAdd(rng, doctmp);
 		}
@@ -364,14 +364,14 @@ void testChange1(size_t seed) {
 		Doc doctmp = doc;
 
 		{ // dels
-			const size_t loop_count = (rng() % 4)+1;
+			const size_t loop_count = (rng() % 6)+1;
 			for (size_t i = 0; i < loop_count; i++) {
 				genDel(rng, doctmp);
 			}
 		}
 
 		{ // adds
-			const size_t loop_count = (rng() % 4)+1;
+			const size_t loop_count = (rng() % 6)+1;
 			for (size_t i = 0; i < loop_count; i++) {
 				genAdd(rng, doctmp);
 			}
@@ -399,9 +399,10 @@ void testChange1(size_t seed) {
 }
 
 int main(void) {
+	const size_t loops = 10'000;
 	{
 		std::cout << "testEmptyDocAdds:\n";
-		for (size_t i = 0; i < 1'000; i++) {
+		for (size_t i = 0; i < loops; i++) {
 			std::cout << "i " << i << "\n";
 			testEmptyDocAdds(1337+i);
 			std::cout << std::string(40, '-') << "\n";
@@ -412,7 +413,7 @@ int main(void) {
 
 	{
 		std::cout << "test1CharDocAdds:\n";
-		for (size_t i = 0; i < 1'000; i++) {
+		for (size_t i = 0; i < loops; i++) {
 			std::cout << "i " << i << "\n";
 			test1CharDocAdds(1337+i);
 			std::cout << std::string(40, '-') << "\n";
@@ -423,7 +424,7 @@ int main(void) {
 
 	{
 		std::cout << "test1CharDocDels:\n";
-		for (size_t i = 0; i < 1'000; i++) {
+		for (size_t i = 0; i < loops; i++) {
 			std::cout << "i " << i << "\n";
 			test1CharDocDels(1337+i);
 			std::cout << std::string(40, '-') << "\n";
@@ -434,7 +435,7 @@ int main(void) {
 
 	{
 		std::cout << "test2CharDocAdds:\n";
-		for (size_t i = 0; i < 1'000; i++) {
+		for (size_t i = 0; i < loops; i++) {
 			std::cout << "i " << i << "\n";
 			test2CharDocAdds(1337+i);
 			std::cout << std::string(40, '-') << "\n";
@@ -445,7 +446,7 @@ int main(void) {
 
 	{
 		std::cout << "testChange1:\n";
-		for (size_t i = 0; i < 1'000; i++) {
+		for (size_t i = 0; i < loops; i++) {
 			std::cout << "i " << i << "\n";
 			testChange1(1337+i);
 			std::cout << std::string(40, '-') << "\n";
