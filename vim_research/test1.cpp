@@ -21,22 +21,79 @@ static bool send_command(zed_net_socket_t* remote_socket, const std::string_view
 
 	std::string str = j.dump();
 	str += '\n';
-	auto ret = zed_net_tcp_socket_send(remote_socket, str.data(), str.size());
 
+	auto ret = zed_net_tcp_socket_send(remote_socket, str.data(), str.size());
 	return ret == 0;
 }
 
 static bool send_setup(zed_net_socket_t* remote_socket) {
-	//send_command(remote_socket, "ex", "let b:green_crdt_timer_can_send = v:true");
-	//send_command(remote_socket, "ex", "");
-	send_command(remote_socket, "ex", "augroup green_crdt");
-	send_command(remote_socket, "ex", "au!"); // delete the group, prevent double trigger
-	send_command(remote_socket, "ex", "au TextChanged <buffer> call ch_sendexpr(channel, [{'cmd': 'full_buffer', 'lines': getbufline(bufnr(), 1, '$')}])");
-	send_command(remote_socket, "ex", "au TextChangedI <buffer> call ch_sendexpr(channel, [{'cmd': 'full_buffer', 'lines': getbufline(bufnr(), 1, '$')}])");
-	send_command(remote_socket, "ex", "augroup END");
-	send_command(remote_socket, "ex", "echo 'setup done'");
+	return send_command(remote_socket, "ex",
+	//"function! GreenCRDT_CheckTimeAndSendState()",
+	//"endfunction",
+	//"function! GreenCRDT_CheckTimeAndSendState() | endfunction",
 
-	return true;
+// vars
+R"(
+let b:green_crdt_timer_can_send = v:true
+let b:green_crdt_dirty = v:true
+)"
+
+R"(
+function! GreenCRDTTimerCallback(timer)
+	let b:green_crdt_timer_can_send = v:true
+	call GreenCRDTCheckTimeAndSendState()
+endfunction
+)"
+
+R"(
+function! GreenCRDTCheckTimeAndSendState() abort
+	if b:green_crdt_timer_can_send && b:green_crdt_dirty
+		let b:green_crdt_timer_can_send = v:false
+		call ch_sendexpr(b:channel, [{'cmd': 'full_buffer', 'lines': getbufline(bufnr(), 1, '$')}])
+		let b:green_crdt_dirty = v:false
+		call timer_start(100, 'GreenCRDTTimerCallback')
+	endif
+endfunction
+)"
+
+R"(
+function! GreenCRDTChangeEvent()
+	let b:green_crdt_dirty = v:true
+	GreenCRDTCheckTimeAndSendState()
+endfunction
+)"
+
+// TODO: pull changes
+
+// cleanup, to be called by user
+// delfunction fails for stop... but well
+R"(
+function! GreenCRDTStop()
+	augroup green_crdt
+		au!
+	augroup END
+	call ch_close(b:channel)
+	delfunction GreenCRDTCheckTimeAndSendState
+	"delfunction GreenCRDTStop
+endfunction
+)"
+
+// this is a hack, bc for some EX mode IPC buggyness reason, it only works as single commands OR inside a function
+R"(
+function! GreenCRDTSetupEvents() abort
+	augroup green_crdt
+		au!
+		au TextChanged <buffer> call GreenCRDTCheckTimeAndSendState()
+		au TextChangedI <buffer> call GreenCRDTCheckTimeAndSendState()
+	augroup END
+endfunction
+call GreenCRDTSetupEvents()
+delfunction GreenCRDTSetupEvents
+)"
+
+R"(
+echo 'setup done'
+)");
 }
 
 int main(void) {
@@ -65,10 +122,9 @@ int main(void) {
 	std::cout << "listening on " << port << "\n";
 
 	std::cout << "paste these commands into your vim for the current buffer:\n";
-	std::cout << "  :let channel = ch_open('localhost:" << port << "')\n";
-	//std::cout << "  :call ch_sendexpr(channel, [{'cmd': 'setup'}])\n";
+	std::cout << "  :let b:channel = ch_open('localhost:" << port << "')\n";
 
-	std::cout << "paste this command to disconnect:\n  :call ch_close(channel)\n";
+	std::cout << "paste this command to disconnect:\n  :call GreenCRDTStop()\n";
 
 	zed_net_socket_t remote_socket;
 	zed_net_address_t remote_address;
@@ -112,7 +168,8 @@ int main(void) {
 		auto j = nlohmann::json::parse(view, nullptr, false);
 		if (j.is_discarded()) {
 			std::cerr << "invalid json\n";
-			break;
+			//break;
+			continue; // whatever
 		}
 
 		//std::cout << "  j: " << j.dump() << "\n";
