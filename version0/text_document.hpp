@@ -35,9 +35,31 @@ struct TextDocument {
 			}
 		}
 
-		//assert(text.size() == state.doc_size);
-
 		return text;
+	}
+
+	bool apply(const Op& op) {
+		if(std::holds_alternative<typename ListType::OpAdd>(op)) {
+			const auto& add_op = std::get<typename ListType::OpAdd>(op);
+			//std::cout << "a:" << add_op.id.id << " s:" << add_op.id.seq << " v:" << add_op.value << "\n";
+			return state.add(add_op.id, add_op.value, add_op.parent_left, add_op.parent_right);
+		} else if (std::holds_alternative<typename ListType::OpDel>(op)) {
+			const auto& del_op = std::get<typename ListType::OpDel>(op);
+			return state.del(del_op.id);
+		} else {
+			assert(false);
+		}
+	}
+
+	bool apply(const std::vector<Op>& ops) {
+		for (const auto& op : ops) {
+			if (!apply(op)) {
+				// this is not ideal, since we might have applyed some, and dont report which/howmany
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	static std::vector<Op> text2adds(
@@ -72,7 +94,7 @@ struct TextDocument {
 	) {
 		// TODO: look up typesystem and fix (move? decltype?)
 		std::vector<Op> ops = text2adds(
-			local_agent, state.last_seen_seq.count(local_agent) ? state.last_seen_seq[local_agent] : 0u,
+			local_agent, state.last_seen_seq.count(local_agent) ? state.last_seen_seq[local_agent]+1u : 0u,
 			parent_left,
 			parent_right,
 			text
@@ -239,7 +261,18 @@ struct TextDocument {
 			std::cout << "deleted: " << ops.size() << "\n";
 		}
 
+		std::cout << "text between: " << getText() << "\n";
+
 		// 2. add range (add all text_start - text_end)
+		if (text_start < text_end) {
+			auto tmp_add_ops = addText(
+				list_start == 0 ? std::nullopt : std::make_optional(state.list[list_start-1].id),
+				list_start == state.list.size() ? std::nullopt :std::make_optional(state.list.at(list_start).id),
+				text.substr(text_start, text_end-text_start)
+			);
+			std::cout << "added: " << tmp_add_ops.size() << "\n";
+			ops.insert(ops.end(), tmp_add_ops.begin(), tmp_add_ops.end());
+		}
 
 		//assert(false && "implement me");
 		return ops;

@@ -201,11 +201,15 @@ void testEmptyDocAdds(size_t seed) {
 
 	std::cout << "changed_text: " << changed_text << "\n";
 
+	Doc otherdoc = doc;
 	assert(doc.getText().size() == doc.state.doc_size);
-	doc.merge(changed_text);
+	const auto merge_ops = doc.merge(changed_text);
 	assert(doc.getText().size() == doc.state.doc_size);
 
 	assert(doc.getText() == changed_text);
+
+	assert(otherdoc.apply(merge_ops));
+	assert(doc.getText() == otherdoc.getText());
 }
 
 void test1CharDocAdds(size_t seed) {
@@ -236,13 +240,17 @@ void test1CharDocAdds(size_t seed) {
 	std::cout << "text: " << doc.getText() << "\n";
 	std::cout << "changed_text: " << changed_text << "\n";
 
+	Doc otherdoc = doc;
 	assert(doc.getText().size() == doc.state.doc_size);
-	doc.merge(changed_text);
+	const auto merge_ops = doc.merge(changed_text);
 	assert(doc.getText().size() == doc.state.doc_size);
 
 	std::cout << "text after merge: " << doc.getText() << "\n";
 
-	//assert(doc.getText() == changed_text);
+	assert(doc.getText() == changed_text);
+
+	assert(otherdoc.apply(merge_ops));
+	assert(doc.getText() == otherdoc.getText());
 }
 
 void test1CharDocDels(size_t seed) {
@@ -282,13 +290,17 @@ void test1CharDocDels(size_t seed) {
 	std::cout << "text: " << doc.getText() << "\n";
 	std::cout << "changed_text: " << changed_text << "\n";
 
+	Doc otherdoc = doc;
 	assert(doc.getText().size() == doc.state.doc_size);
-	doc.merge(changed_text);
+	const auto merge_ops = doc.merge(changed_text);
 	assert(doc.getText().size() == doc.state.doc_size);
 
 	std::cout << "text after merge: " << doc.getText() << "\n";
 
-	//assert(doc.getText() == changed_text);
+	assert(doc.getText() == changed_text);
+
+	assert(otherdoc.apply(merge_ops));
+	assert(doc.getText() == otherdoc.getText());
 }
 
 void test2CharDocAdds(size_t seed) {
@@ -321,13 +333,69 @@ void test2CharDocAdds(size_t seed) {
 	std::cout << "text: " << doc.getText() << "\n";
 	std::cout << "changed_text: " << changed_text << "\n";
 
+	Doc otherdoc = doc;
 	assert(doc.getText().size() == doc.state.doc_size);
-	doc.merge(changed_text);
+	const auto merge_ops = doc.merge(changed_text);
 	assert(doc.getText().size() == doc.state.doc_size);
 
 	std::cout << "text after merge: " << doc.getText() << "\n";
 
-	//assert(doc.getText() == changed_text);
+	assert(doc.getText() == changed_text);
+
+	assert(otherdoc.apply(merge_ops));
+	assert(doc.getText() == otherdoc.getText());
+}
+
+void testChange1(size_t seed) {
+	Rng rng(seed);
+
+	Doc doc;
+	doc.local_agent = 'A';
+
+	assert(doc.getText().size() == doc.state.doc_size);
+	doc.addText(std::nullopt, std::nullopt, "012345");
+	assert(doc.getText().size() == doc.state.doc_size);
+
+	assert(doc.getText() == "012345");
+
+	std::string changed_text;
+	{
+		// for modifying
+		Doc doctmp = doc;
+
+		{ // dels
+			const size_t loop_count = (rng() % 4)+1;
+			for (size_t i = 0; i < loop_count; i++) {
+				genDel(rng, doctmp);
+			}
+		}
+
+		{ // adds
+			const size_t loop_count = (rng() % 4)+1;
+			for (size_t i = 0; i < loop_count; i++) {
+				genAdd(rng, doctmp);
+			}
+		}
+
+		changed_text = doctmp.getText();
+	}
+
+	assert(doc.getText() != changed_text);
+
+	std::cout << "text: " << doc.getText() << "\n";
+	std::cout << "changed_text: " << changed_text << "\n";
+
+	Doc otherdoc = doc;
+	assert(doc.getText().size() == doc.state.doc_size);
+	const auto merge_ops = doc.merge(changed_text);
+	assert(doc.getText().size() == doc.state.doc_size);
+
+	std::cout << "text after merge: " << doc.getText() << "\n";
+
+	assert(doc.getText() == changed_text);
+
+	assert(otherdoc.apply(merge_ops));
+	assert(doc.getText() == otherdoc.getText());
 }
 
 int main(void) {
@@ -338,8 +406,9 @@ int main(void) {
 			testEmptyDocAdds(1337+i);
 			std::cout << std::string(40, '-') << "\n";
 		}
-		std::cout << std::string(40, '=') << "\n";
 	}
+
+	std::cout << std::string(40, '=') << "\n";
 
 	{
 		std::cout << "test1CharDocAdds:\n";
@@ -348,27 +417,39 @@ int main(void) {
 			test1CharDocAdds(1337+i);
 			std::cout << std::string(40, '-') << "\n";
 		}
-		std::cout << std::string(40, '=') << "\n";
 	}
+
+	std::cout << std::string(40, '=') << "\n";
 
 	{
 		std::cout << "test1CharDocDels:\n";
-		for (size_t i = 0; i < 100; i++) {
+		for (size_t i = 0; i < 1'000; i++) {
 			std::cout << "i " << i << "\n";
 			test1CharDocDels(1337+i);
 			std::cout << std::string(40, '-') << "\n";
 		}
-		std::cout << std::string(40, '=') << "\n";
 	}
+
+	std::cout << std::string(40, '=') << "\n";
 
 	{
 		std::cout << "test2CharDocAdds:\n";
-		for (size_t i = 0; i < 10; i++) {
+		for (size_t i = 0; i < 1'000; i++) {
 			std::cout << "i " << i << "\n";
 			test2CharDocAdds(1337+i);
 			std::cout << std::string(40, '-') << "\n";
 		}
-		std::cout << std::string(40, '=') << "\n";
+	}
+
+	std::cout << std::string(40, '=') << "\n";
+
+	{
+		std::cout << "testChange1:\n";
+		for (size_t i = 0; i < 1'000; i++) {
+			std::cout << "i " << i << "\n";
+			testChange1(1337+i);
+			std::cout << std::string(40, '-') << "\n";
+		}
 	}
 
 	return 0;
