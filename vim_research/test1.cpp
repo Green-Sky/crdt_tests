@@ -149,7 +149,7 @@ function! GreenCRDTCheckTimeAndFetch()
 	if b:green_crdt_timer_can_fetch
 		let b:green_crdt_timer_can_fetch = v:false
 
-		" dont update when inserting or visual
+		" dont update when inserting or visual (or atleast not in visual)
 		if mode() is# 'n'
 			let l:response = ch_evalexpr(b:channel, [{'cmd': 'fetch_changes'}])
 			for [line_number, line] in l:response
@@ -182,13 +182,14 @@ function! GreenCRDTStop()
 		au!
 	augroup END
 
-	call timer_stop(green_crdt_fetch_timer)
+	call timer_stop(b:green_crdt_fetch_timer)
 
 	call ch_close(b:channel)
 
 	delfunction GreenCRDTCheckTimeAndSend
 	delfunction GreenCRDTCheckTimeAndFetch
 	delfunction GreenCRDTSendTimerCallback
+	delfunction GreenCRDTFetchTimerCallback
 	delfunction GreenCRDTChangeEvent
 	"delfunction GreenCRDTStop
 	let b:green_crdt_timer_can_send = v:true
