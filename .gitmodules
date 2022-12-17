@@ -1,0 +1,5 @@
+[submodule "external/toxcore/c-toxcore"]
+	path = external/toxcore/c-toxcore
+	url = https://github.com/TokTok/c-toxcore.git
+	shallow = true
+	ignore = dirty

@@ -20,6 +20,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 add_subdirectory(./external/json)
 add_subdirectory(./external/zed_net)
+add_subdirectory(./external/toxcore)
 
 # Bump up warning levels appropriately for clang, gcc & msvc
 if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")

@@ -14,3 +14,16 @@ target_link_libraries(vim_research_test1 PUBLIC
 	nlohmann_json::nlohmann_json
 )
 
+########################################
+
+add_executable(vim_research_test2
+	./test2.cpp
+)
+
+target_link_libraries(vim_research_test2 PUBLIC
+	crdt_version0
+	zed_net
+	nlohmann_json::nlohmann_json
+	toxcore
+)
+
