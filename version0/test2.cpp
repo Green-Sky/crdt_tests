@@ -5,6 +5,7 @@
 #include <random>
 #include <iostream>
 #include <cassert>
+#include <variant>
 
 // single letter agent, for testing only
 using Agent = char;
@@ -411,6 +412,91 @@ void testBugSame(void) {
 	assert(doc.getText() == new_text2);
 }
 
+void testBugDoubleDel(void) {
+	Doc doc;
+	doc.local_agent = 'A';
+
+	{
+		std::string_view new_text{"a"};
+		doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{""};
+		const auto ops = doc.merge(new_text);
+		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
+		assert(std::holds_alternative<ListType::OpDel>(ops.front()));
+		assert(std::get<ListType::OpDel>(ops.front()).id.seq == 0);
+	}
+
+	{
+		std::string_view new_text{""};
+		const auto ops = doc.merge(new_text);
+		assert(doc.getText() == new_text);
+		assert(ops.size() == 0);
+	}
+}
+
+void testBugSameDel(void) {
+	Doc doc;
+	doc.local_agent = 'A';
+
+	{
+		std::string_view new_text{"a"};
+		doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"aa"};
+		const auto ops = doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"a"};
+		const auto ops = doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+}
+
+void testBugSameDel2(void) {
+	Doc doc;
+	doc.local_agent = 'A';
+
+	{
+		std::string_view new_text{"a"};
+		doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"aa"};
+		const auto ops = doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"aaa"};
+		const auto ops = doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"aa"};
+		const auto ops = doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"a"};
+		const auto ops = doc.merge(new_text);
+		assert(doc.getText() == new_text);
+	}
+}
+
 int main(void) {
 	const size_t loops = 1'000;
 	{
@@ -469,8 +555,29 @@ int main(void) {
 	std::cout << std::string(40, '=') << "\n";
 
 	{
-		std::cout << "testBugNLNL:\n";
+		std::cout << "testBugSame:\n";
 		testBugSame();
+	}
+
+	std::cout << std::string(40, '=') << "\n";
+
+	{
+		std::cout << "testBugDoubleDel:\n";
+		testBugDoubleDel();
+	}
+
+	std::cout << std::string(40, '=') << "\n";
+
+	{
+		std::cout << "testBugSameDel:\n";
+		testBugSameDel();
+	}
+
+	std::cout << std::string(40, '=') << "\n";
+
+	{
+		std::cout << "testBugSameDel2:\n";
+		testBugSameDel2();
 	}
 
 	return 0;

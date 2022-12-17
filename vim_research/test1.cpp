@@ -210,8 +210,8 @@ int main(void) {
 	doc.local_agent = remote_address.port; // tmp: use local port as id
 
 	while (true) {
-		// 10MiB
-		auto buffer = std::make_unique<std::array<uint8_t, 1024*1024*10>>();
+		// 100MiB
+		auto buffer = std::make_unique<std::array<uint8_t, 1024*1024*100>>();
 
 		int64_t bytes_received {0};
 		bytes_received = zed_net_tcp_socket_receive(&remote_socket, buffer->data(), buffer->size());

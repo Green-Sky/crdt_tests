@@ -147,8 +147,13 @@ struct TextDocument {
 		std::vector<Op> ops;
 
 		for (size_t i = first_idx; i < last_idx; i++) {
+			if (!state.list.at(i).value.has_value()) {
+				// allready deleted
+				continue;
+			}
+
 			ops.emplace_back(typename ListType::OpDel{
-				state.list[i].id
+				state.list.at(i).id
 			});
 
 			// TODO: do delets get a seq?????
@@ -163,7 +168,7 @@ struct TextDocument {
 	// note: rn it only creates 1 diff patch
 	std::vector<Op> merge(std::string_view text) {
 		if (text.empty()) {
-			if (state.list.empty()) {
+			if (state.list.empty() || state.doc_size == 0) {
 				// no op
 				return {};
 			} else {
@@ -185,6 +190,7 @@ struct TextDocument {
 		// find start and end of changes
 		// start
 		size_t list_start = 0;
+		size_t list_start_counted = 0;
 		size_t text_start = 0;
 		bool differ = false;
 		for (; list_start < state.list.size() && text_start < text.size();) {
@@ -201,6 +207,7 @@ struct TextDocument {
 
 			list_start++;
 			text_start++;
+			list_start_counted++;
 		}
 
 		// doc and text dont differ
@@ -214,7 +221,10 @@ struct TextDocument {
 		// +1 so i can have unsigned
 		size_t list_end = state.list.size();
 		size_t text_end = text.size();
-		for (; list_end > 0 && text_end > 0 && list_end >= list_start && text_end >= text_start;) {
+		//for (; list_end > 0 && text_end > 0 && list_end >= list_start && text_end >= text_start;) {
+		//while (list_end >= list_start && text_end >= text_start) {
+		size_t list_end_counted = 0;
+		while (list_start_counted - list_end_counted > state.doc_size && text_end >= text_start) {
 			// jump over tombstones
 			if (!state.list[list_end-1].value.has_value()) {
 				list_end--;
@@ -227,6 +237,7 @@ struct TextDocument {
 
 			list_end--;
 			text_end--;
+			list_end_counted++;
 		}
 
 		//std::cout << "list_end: " << list_end << " text_end: " << text_end << "\n";
@@ -237,7 +248,7 @@ struct TextDocument {
 		if (list_start <= list_end && list_start < state.list.size()) {
 			ops = delRange(
 				state.list[list_start].id,
-				list_end < state.list.size() ? std::make_optional(state.list[list_end].id) : std::nullopt
+				(list_start == list_end ? list_end+1 : list_end) < state.list.size() ? std::make_optional(state.list[list_end].id) : std::nullopt
 			);
 			//std::cout << "deleted: " << ops.size() << "\n";
 		}
