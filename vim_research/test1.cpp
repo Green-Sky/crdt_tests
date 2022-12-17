@@ -1,17 +1,82 @@
 #include <crdt/text_document.hpp>
 #include <nlohmann/json.hpp>
 
+extern "C" {
+#include <zed_net.h>
+}
+
 #include <memory>
 #include <string_view>
-#include <zed_net.h>
+#include <variant>
 
 #include <iostream>
 #include <cassert>
 
 // single letter agent, for testing only
-using Agent = char;
+//using Agent = char;
+using Agent = uint16_t; // tmp local port
 using Doc = GreenCRDT::TextDocument<Agent>;
 using ListType = Doc::ListType;
+
+std::ostream& operator<<(std::ostream& out, const std::optional<ListType::ListID>& id) {
+	if (id.has_value()) {
+		out << id.value().id << "-" << id.value().seq;
+	} else {
+		out << "null";
+	}
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const ListType::OpAdd& op) {
+	out
+		<< "Add{ id:" << op.id.id
+		<< "-" << op.id.seq
+		<< ", v:" << op.value
+		<< ", l:" << op.parent_left
+		<< ", r:" << op.parent_right
+		<< " }"
+	;
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const ListType::OpDel& op) {
+	out
+		<< "Del{ id:" << op.id.id
+		<< "-" << op.id.seq
+		<< " }"
+	;
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const Doc::Op& op) {
+	if (std::holds_alternative<ListType::OpAdd>(op)) {
+		out << std::get<ListType::OpAdd>(op);
+	} else if (std::holds_alternative<ListType::OpDel>(op)) {
+		out << std::get<ListType::OpDel>(op);
+	}
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const std::optional<char>& id) {
+	if (id.has_value()) {
+		out << id.value();
+	} else {
+		out << "null";
+	}
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const ListType::Entry& e) {
+	out
+		<< "{ id:" << e.id.id
+		<< "-" << e.id.seq
+		<< ", v:" << e.value
+		<< ", l:" << e.parent_left
+		<< ", r:" << e.parent_right
+		<< " }"
+	;
+	return out;
+}
 
 static bool send_command(zed_net_socket_t* remote_socket, const std::string_view mode, const std::string_view command) {
 	auto j = nlohmann::json::array();
@@ -106,7 +171,7 @@ int main(void) {
 
 	std::cout << "initialized zed_net\n";
 
-	const unsigned int port {1337};
+	const uint16_t port {1337};
 	zed_net_socket_t listen_socket;
 	if (zed_net_tcp_socket_open(
 		&listen_socket,
@@ -142,6 +207,8 @@ int main(void) {
 	// send doauto text changed for inital buffer
 
 	Doc doc;
+	doc.local_agent = remote_address.port; // tmp: use local port as id
+
 	while (true) {
 		// 10MiB
 		auto buffer = std::make_unique<std::array<uint8_t, 1024*1024*10>>();
@@ -227,15 +294,34 @@ int main(void) {
 				}
 
 				std::string new_text;
-				for (const auto& line : j_lines) {
-					new_text += line;
-					new_text += '\n';
+				for (size_t i = 0; i < j_lines.size(); i++) {
+					if (!j_lines.at(i).empty()) {
+						new_text += static_cast<std::string>(j_lines.at(i));
+					}
+
+					if (i+1 < j_lines.size()) {
+						new_text += "\n";
+					}
 				}
+
+				//std::cout << "new_text:\n" << new_text << "\n";
+				//std::cout << "old_text:\n" << doc.getText() << "\n";
+				std::cout << "doc state: ";
+					for (const auto& e : doc.state.list) {
+						std::cout << e << " ";
+					}
+					std::cout << "\n";
 
 				const auto ops = doc.merge(new_text);
 				if (!ops.empty()) {
 					std::cout << "ops.size: " << ops.size() << "\n";
+					std::cout << "ops: ";
+					for (const auto& op : ops) {
+						std::cout << op << " ";
+					}
+					std::cout << "\n";
 				}
+				assert(doc.getText() == new_text);
 			} else {
 				std::cout << "unknown command '" << command << "'\n";
 			}

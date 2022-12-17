@@ -245,11 +245,11 @@ struct TextDocument {
 		//std::cout << "text between: " << getText() << "\n";
 
 		// 2. add range (add all text_start - text_end)
-		if (text_start < text_end) {
+		if (state.doc_size < text.size()) {
 			auto tmp_add_ops = addText(
 				list_start == 0 ? std::nullopt : std::make_optional(state.list[list_start-1].id),
 				list_start == state.list.size() ? std::nullopt :std::make_optional(state.list.at(list_start).id),
-				text.substr(text_start, text_end-text_start)
+				text.substr(text_start, text.size() - state.doc_size)
 			);
 			//std::cout << "added: " << tmp_add_ops.size() << "\n";
 			ops.insert(ops.end(), tmp_add_ops.begin(), tmp_add_ops.end());

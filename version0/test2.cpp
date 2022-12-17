@@ -398,8 +398,21 @@ void testChange1(size_t seed) {
 	assert(doc.getText() == otherdoc.getText());
 }
 
+void testBugSame(void) {
+	Doc doc;
+	doc.local_agent = 'A';
+
+	std::string_view new_text1{"a"};
+	doc.merge(new_text1);
+	assert(doc.getText() == new_text1);
+
+	std::string_view new_text2{"aa"};
+	doc.merge(new_text2);
+	assert(doc.getText() == new_text2);
+}
+
 int main(void) {
-	const size_t loops = 10'000;
+	const size_t loops = 1'000;
 	{
 		std::cout << "testEmptyDocAdds:\n";
 		for (size_t i = 0; i < loops; i++) {
@@ -451,6 +464,13 @@ int main(void) {
 			testChange1(1337+i);
 			std::cout << std::string(40, '-') << "\n";
 		}
+	}
+
+	std::cout << std::string(40, '=') << "\n";
+
+	{
+		std::cout << "testBugNLNL:\n";
+		testBugSame();
 	}
 
 	return 0;
