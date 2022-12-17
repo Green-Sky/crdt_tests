@@ -78,6 +78,19 @@ std::ostream& operator<<(std::ostream& out, const ListType::Entry& e) {
 	return out;
 }
 
+static bool send_response(zed_net_socket_t* remote_socket, const int64_t id, const nlohmann::json& j) {
+	auto j_msg = nlohmann::json::array();
+
+	j_msg.push_back(id);
+	j_msg.push_back(j);
+
+	std::string str = j_msg.dump();
+	str += '\n';
+
+	auto ret = zed_net_tcp_socket_send(remote_socket, str.data(), str.size());
+	return ret == 0;
+}
+
 static bool send_command(zed_net_socket_t* remote_socket, const std::string_view mode, const std::string_view command) {
 	auto j = nlohmann::json::array();
 
@@ -97,31 +110,65 @@ static bool send_setup(zed_net_socket_t* remote_socket) {
 // vars
 R"(
 let b:green_crdt_timer_can_send = v:true
+let b:green_crdt_timer_can_fetch = v:true
 let b:green_crdt_dirty = v:true
 )"
 
+// send
 R"(
-function! GreenCRDTTimerCallback(timer) abort
+function! GreenCRDTSendTimerCallback(timer) abort
 	let b:green_crdt_timer_can_send = v:true
-	call GreenCRDTCheckTimeAndSendState()
+	call GreenCRDTCheckTimeAndSend()
 endfunction
 )"
 
+// TODO: make send sync? (ch_evalexpr())
 R"(
-function! GreenCRDTCheckTimeAndSendState() abort
+function! GreenCRDTCheckTimeAndSend() abort
 	if b:green_crdt_timer_can_send && b:green_crdt_dirty
 		let b:green_crdt_timer_can_send = v:false
 		call ch_sendexpr(b:channel, [{'cmd': 'full_buffer', 'lines': getbufline(bufnr(), 1, '$')}])
 		let b:green_crdt_dirty = v:false
-		call timer_start(100, 'GreenCRDTTimerCallback')
+		call timer_start(100, 'GreenCRDTSendTimerCallback')
 	endif
 endfunction
 )"
 
+// fetch
+R"(
+function! GreenCRDTFetchTimerCallback(timer) abort
+	let b:green_crdt_timer_can_fetch = v:true
+	call GreenCRDTCheckTimeAndFetch()
+endfunction
+)"
+
+R"(
+function! GreenCRDTCheckTimeAndFetch()
+	if reg_executing() isnot# '' | return | endif
+
+	if b:green_crdt_timer_can_fetch
+		let b:green_crdt_timer_can_fetch = v:false
+
+		" dont update when inserting or visual
+		if mode() is# 'n'
+			let l:response = ch_evalexpr(b:channel, [{'cmd': 'fetch_changes'}])
+			for [line_number, line] in l:response
+				call setline(line_number, line)
+			endfor
+
+		endif
+
+		let b:green_crdt_fetch_timer = timer_start(503, 'GreenCRDTFetchTimerCallback')
+	endif
+endfunction
+)"
+
+// change event
 R"(
 function! GreenCRDTChangeEvent()
 	let b:green_crdt_dirty = v:true
-	call GreenCRDTCheckTimeAndSendState()
+	call GreenCRDTCheckTimeAndSend()
+	call GreenCRDTCheckTimeAndFetch()
 endfunction
 )"
 
@@ -134,9 +181,14 @@ function! GreenCRDTStop()
 	augroup green_crdt
 		au!
 	augroup END
+
+	call timer_stop(green_crdt_fetch_timer)
+
 	call ch_close(b:channel)
-	delfunction GreenCRDTCheckTimeAndSendState
-	delfunction GreenCRDTTimerCallback
+
+	delfunction GreenCRDTCheckTimeAndSend
+	delfunction GreenCRDTCheckTimeAndFetch
+	delfunction GreenCRDTSendTimerCallback
 	delfunction GreenCRDTChangeEvent
 	"delfunction GreenCRDTStop
 	let b:green_crdt_timer_can_send = v:true
@@ -157,6 +209,8 @@ delfunction GreenCRDTSetupEvents
 )"
 
 R"(
+let b:green_crdt_fetch_timer = timer_start(900, 'GreenCRDTFetchTimerCallback')
+
 echo 'setup done'
 )");
 }
@@ -279,6 +333,32 @@ int main(void) {
 			} else if (command == "setup") { // setup callbacks etc, basically the plugin
 				std::cout << "sending setup\n";
 				send_setup(&remote_socket);
+			} else if (command == "fetch_changes") { // setup callbacks etc, basically the plugin
+				// apply changes (some) and gen vim inserts
+				std::cout << "got fetch changes\n";
+
+				auto j_res_line_list = nlohmann::json::array();
+
+				if (true) { // external changes
+					const auto crdt_text = doc.getText();
+					std::string_view text_view {crdt_text};
+					for (int64_t i = 1; ; i++) {
+						const auto nl_pos = text_view.find_first_of("\n");
+						if (nl_pos == std::string_view::npos) {
+							// no more lines
+							j_res_line_list.push_back(nlohmann::json::array({i, text_view}));
+							break;
+						} else {
+							const auto line = text_view.substr(0, nl_pos);
+							j_res_line_list.push_back(nlohmann::json::array({i, line}));
+
+							assert(text_view.size() >= nl_pos+1);
+							text_view = text_view.substr(nl_pos+1);
+						}
+					}
+				}
+
+				send_response(&remote_socket, command_seq, j_res_line_list);
 			} else if (command == "full_buffer") { // vim is sending the full buffer
 				// array of lines
 
