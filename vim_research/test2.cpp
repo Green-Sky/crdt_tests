@@ -11,77 +11,32 @@ extern "C" {
 #include <string_view>
 #include <variant>
 #include <thread>
+#include <future>
 #include <atomic>
 #include <chrono>
 
 #include <iostream>
 #include <cassert>
 
+//struct ToxPubKey {
+	//std::array<uint8_t, 32> data;
+
+	//bool operator==(const ToxPubKey& other) const {
+		//return data == other.data;
+	//}
+
+	//bool operator<(const ToxPubKey& other) const {
+		//return data < other.data;
+	//}
+//};
+using ToxPubKey = std::array<uint8_t, 32>;
+
 // single letter agent, for testing only
 //using Agent = char;
-using Agent = uint16_t; // tmp local port
+//using Agent = uint16_t; // tmp local port
+using Agent = ToxPubKey;
 using Doc = GreenCRDT::TextDocument<Agent>;
 using ListType = Doc::ListType;
-
-std::ostream& operator<<(std::ostream& out, const std::optional<ListType::ListID>& id) {
-	if (id.has_value()) {
-		out << id.value().id << "-" << id.value().seq;
-	} else {
-		out << "null";
-	}
-	return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const ListType::OpAdd& op) {
-	out
-		<< "Add{ id:" << op.id.id
-		<< "-" << op.id.seq
-		<< ", v:" << op.value
-		<< ", l:" << op.parent_left
-		<< ", r:" << op.parent_right
-		<< " }"
-	;
-	return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const ListType::OpDel& op) {
-	out
-		<< "Del{ id:" << op.id.id
-		<< "-" << op.id.seq
-		<< " }"
-	;
-	return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const Doc::Op& op) {
-	if (std::holds_alternative<ListType::OpAdd>(op)) {
-		out << std::get<ListType::OpAdd>(op);
-	} else if (std::holds_alternative<ListType::OpDel>(op)) {
-		out << std::get<ListType::OpDel>(op);
-	}
-	return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const std::optional<char>& id) {
-	if (id.has_value()) {
-		out << id.value();
-	} else {
-		out << "null";
-	}
-	return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const ListType::Entry& e) {
-	out
-		<< "{ id:" << e.id.id
-		<< "-" << e.id.seq
-		<< ", v:" << e.value
-		<< ", l:" << e.parent_left
-		<< ", r:" << e.parent_right
-		<< " }"
-	;
-	return out;
-}
 
 namespace vim {
 
@@ -229,6 +184,8 @@ struct SharedContext {
 	std::atomic_bool should_quit {false};
 
 	// tox ngc id for agent
+	ToxPubKey agent;
+	std::promise<void> agent_set;
 
 	// remote op queue for receive
 	// local op list for remote lookups
@@ -237,6 +194,9 @@ struct SharedContext {
 	// bool dirty
 
 	Tox* tox {nullptr};
+	bool tox_dht_online {false};
+	bool tox_group_online {false};
+	uint32_t tox_group_number {-1u};
 };
 
 namespace tox {
@@ -299,12 +259,31 @@ void toxThread(SharedContext* ctx) {
 	CALLBACK_REG(group_custom_private_packet);
 #undef CALLBACK_REG
 
-	// dht
+	{ // dht bootstrap
+		struct DHT_node {
+			const char* ip;
+			uint16_t port;
+			const char key_hex[TOX_PUBLIC_KEY_SIZE*2 + 1]; // 1 for null terminator
+			unsigned char key_bin[TOX_PUBLIC_KEY_SIZE];
+		};
 
+		DHT_node nodes[] {
+			{"tox.plastiras.org",					33445,	"8E8B63299B3D520FB377FE5100E65E3322F7AE5B20A0ACED2981769FC5B43725", {}}, // 14
+			{"tox2.plastiras.org",					33445,	"B6626D386BE7E3ACA107B46F48A5C4D522D29281750D44A0CBA6A2721E79C951", {}}, // 14
+		};
 
-	// public
-	// 87F3EBA4C0D27926F9ED77E2FF9D8F26F9869D71311D0DB4CA857C1E25A40B18 - green_crdt_test1
-	//tox_group_join()
+		for (size_t i = 0; i < sizeof(nodes)/sizeof(DHT_node); i ++) {
+			sodium_hex2bin(
+				nodes[i].key_bin, sizeof(nodes[i].key_bin),
+				nodes[i].key_hex, sizeof(nodes[i].key_hex)-1,
+				NULL, NULL, NULL
+			);
+			tox_bootstrap(ctx->tox, nodes[i].ip, nodes[i].port, nodes[i].key_bin, NULL);
+			// TODO: use extra tcp option to avoid error msgs
+			tox_add_tcp_relay(ctx->tox, nodes[i].ip, nodes[i].port, nodes[i].key_bin, NULL);
+		}
+	}
+
 	//tox_group_self_get_public_key()
 	//tox_group_send_custom_packet()
 	//tox_group_send_custom_private_packet()
@@ -313,7 +292,36 @@ void toxThread(SharedContext* ctx) {
 		// tox iterate
 		tox_iterate(ctx->tox, ctx);
 
-		// send stuff
+		if (!ctx->tox_dht_online) { // first wait for dht
+			if (tox_self_get_connection_status(ctx->tox) != TOX_CONNECTION::TOX_CONNECTION_NONE) {
+				ctx->tox_dht_online = true;
+
+				std::cout << "tox connected to dht\n";
+
+				// public
+				// 87F3EBA4C0D27926F9ED77E2FF9D8F26F9869D71311D0DB4CA857C1E25A40B18 - green_crdt_test1
+				const auto chat_id = hex2bin("87F3EBA4C0D27926F9ED77E2FF9D8F26F9869D71311D0DB4CA857C1E25A40B18");
+				const std::string_view name {"green_crdt_vim2"};
+				ctx->tox_group_number = tox_group_join(ctx->tox, chat_id.data(), reinterpret_cast<const uint8_t*>(name.data()), name.size(), nullptr, 0, nullptr);
+
+				if (!tox_group_self_get_public_key(ctx->tox, ctx->tox_group_number, ctx->agent.data(), nullptr)) {
+					std::cerr << "failed to get own pub key\n";
+					ctx->should_quit = true;
+					ctx->agent_set.set_value();
+					return; // fuck everything
+				}
+				ctx->agent_set.set_value();
+			}
+		} else if (!ctx->tox_group_online) { // then wait for group to connect
+			if (tox_group_get_number_groups(ctx->tox) != 0) {
+				ctx->tox_group_online = true;
+				std::cout << "tox connected to group\n";
+			}
+		} else { // do the thing
+			// staging?
+			// handle requests
+			// send tip (prio self)
+		}
 
 		std::this_thread::sleep_for(20ms);
 	}
@@ -323,10 +331,81 @@ void toxThread(SharedContext* ctx) {
 
 } // namespace tox
 
+std::ostream& operator<<(std::ostream& out, const ToxPubKey& id) {
+
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const std::optional<ListType::ListID>& id) {
+	if (id.has_value()) {
+		out << id.value().id << "-" << id.value().seq;
+	} else {
+		out << "null";
+	}
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const ListType::OpAdd& op) {
+	out
+		<< "Add{ id:" << op.id.id
+		<< "-" << op.id.seq
+		<< ", v:" << op.value
+		<< ", l:" << op.parent_left
+		<< ", r:" << op.parent_right
+		<< " }"
+	;
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const ListType::OpDel& op) {
+	out
+		<< "Del{ id:" << op.id.id
+		<< "-" << op.id.seq
+		<< " }"
+	;
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const Doc::Op& op) {
+	if (std::holds_alternative<ListType::OpAdd>(op)) {
+		out << std::get<ListType::OpAdd>(op);
+	} else if (std::holds_alternative<ListType::OpDel>(op)) {
+		out << std::get<ListType::OpDel>(op);
+	}
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const std::optional<char>& id) {
+	if (id.has_value()) {
+		out << id.value();
+	} else {
+		out << "null";
+	}
+	return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const ListType::Entry& e) {
+	out
+		<< "{ id:" << e.id.id
+		<< "-" << e.id.seq
+		<< ", v:" << e.value
+		<< ", l:" << e.parent_left
+		<< ", r:" << e.parent_right
+		<< " }"
+	;
+	return out;
+}
+
 int main(void) {
 	SharedContext ctx;
 	std::cout << "starting tox thread\n";
 	auto tox_thread = std::thread(tox::toxThread, &ctx);
+
+	std::cout << "waiting for agent id\n";
+	ctx.agent_set.get_future().wait();
+	if (ctx.should_quit) {
+		return -1;
+	}
 
 	std::cout << "starting vim ipc server\n";
 
@@ -373,7 +452,7 @@ int main(void) {
 	// send doauto text changed for inital buffer
 
 	Doc doc;
-	doc.local_agent = remote_address.port; // tmp: use local port as id
+	doc.local_agent = ctx.agent;
 
 	while (true) {
 		// 100MiB
