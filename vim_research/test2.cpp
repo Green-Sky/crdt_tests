@@ -80,7 +80,7 @@ namespace std {
 
 	template<typename T>
 	static void from_json(const nlohmann::json& nlohmann_json_j, std::optional<T>& nlohmann_json_t) {
-		if (nlohmann_json_j != nullptr) {
+		if (!nlohmann_json_j.is_null()) {
 			nlohmann_json_t = static_cast<T>(nlohmann_json_j);
 		} else {
 			nlohmann_json_t = std::nullopt;
@@ -117,14 +117,23 @@ namespace std {
 		} else if (std::holds_alternative<Doc::ListType::OpDel>(nlohmann_json_t)) {
 			nlohmann_json_j["t"] = "del";
 			nlohmann_json_j["d"] = std::get<Doc::ListType::OpDel>(nlohmann_json_t);
+		} else {
+			assert(false && "missing op type");
 		}
 	}
 
 	static void from_json(const nlohmann::json& nlohmann_json_j, Doc::Op& nlohmann_json_t) {
+		if (nlohmann_json_j.is_null()) {
+			std::cerr << "got null j\n";
+			return;
+		}
+
 		if (nlohmann_json_j.at("t") == "add") {
-			nlohmann_json_j.at("d").get_to(std::get<Doc::ListType::OpAdd>(nlohmann_json_t));
+			nlohmann_json_t = static_cast<Doc::ListType::OpAdd>(nlohmann_json_j.at("d"));
 		} else if (nlohmann_json_j.at("t") == "del") {
-			nlohmann_json_j.at("d").get_to(std::get<Doc::ListType::OpDel>(nlohmann_json_t));
+			nlohmann_json_t = static_cast<Doc::ListType::OpDel>(nlohmann_json_j.at("d"));
+		} else {
+			assert(false && "missing op type");
 		}
 	}
 } // namespace std
@@ -506,6 +515,7 @@ void toxThread(SharedContext* ctx) {
 						f_pkg.seq = ctx->command_frontier.at(agent_local);
 
 						c_pkg = ctx->command_lists[agent_local][f_pkg.seq];
+						assert(!c_pkg.ops.empty());
 					}
 
 					{ // gossip
@@ -857,16 +867,23 @@ int main(void) {
 					assert(ctx.command_lists.size() == ctx.command_frontier.size());
 
 					auto& local_command_list = ctx.command_lists[ctx.agent];
+
 					uint64_t seq {0};
 					if (ctx.command_frontier.count(ctx.agent)) { // get last own seq
 						seq = ctx.command_frontier[ctx.agent] + 1;
 					}
-					local_command_list.emplace(seq, Command{
-						ctx.agent,
-						seq,
-						ops
-					});
-					ctx.command_frontier[ctx.agent] = seq;
+					const size_t max_ops {5}; // limit ops per command so we can fit them into packets
+					for (size_t i = 0; i < ops.size(); i+=max_ops, seq++) {
+						std::vector<Doc::Op> tmp_ops {ops.cbegin()+i, ops.cbegin()+i+1};
+						assert(!tmp_ops.empty());
+
+						local_command_list.emplace(seq, Command{
+							ctx.agent,
+							seq,
+							tmp_ops
+						});
+						ctx.command_frontier[ctx.agent] = seq;
+					}
 				}
 				ctx.should_gossip_local.store(true);
 			} else {

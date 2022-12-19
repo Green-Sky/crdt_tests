@@ -71,7 +71,7 @@ struct List {
 	std::map<AgentType, uint64_t> last_seen_seq;
 
 	std::optional<size_t> findIdx(const ListID& list_id) const {
-		verify();
+		//verify(); // too expensive
 		for (size_t i = 0; i < list.size(); i++) {
 			if (list[i].id == list_id) {
 				return i;
