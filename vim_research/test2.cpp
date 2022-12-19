@@ -7,11 +7,14 @@ extern "C" {
 #include <sodium.h>
 }
 
+#include <optional>
 #include <memory>
+#include <unordered_map>
 #include <string_view>
 #include <variant>
 #include <thread>
 #include <future>
+#include <mutex>
 #include <atomic>
 #include <chrono>
 
@@ -31,12 +34,104 @@ extern "C" {
 //};
 using ToxPubKey = std::array<uint8_t, 32>;
 
+template<>
+struct std::hash<ToxPubKey> {
+	std::size_t operator()(ToxPubKey const& s) const noexcept {
+		static_assert(sizeof(size_t) == 8);
+		// TODO: maybe shuffle the indices a bit
+		return
+			(static_cast<size_t>(s[0]) << 8*0) |
+			(static_cast<size_t>(s[1]) << 8*1) |
+			(static_cast<size_t>(s[2]) << 8*2) |
+			(static_cast<size_t>(s[3]) << 8*3) |
+			(static_cast<size_t>(s[4]) << 8*4) |
+			(static_cast<size_t>(s[5]) << 8*5) |
+			(static_cast<size_t>(s[6]) << 8*6) |
+			(static_cast<size_t>(s[7]) << 8*7)
+		;
+	}
+};
+
 // single letter agent, for testing only
 //using Agent = char;
 //using Agent = uint16_t; // tmp local port
 using Agent = ToxPubKey;
 using Doc = GreenCRDT::TextDocument<Agent>;
 using ListType = Doc::ListType;
+
+struct Command {
+	Agent actor;
+	uint64_t seq {0}; // independed of the ops inside, theoretically
+	//...
+	std::vector<Doc::Op> ops;
+};
+
+namespace std {
+	template<typename T>
+	static void to_json(nlohmann::json& nlohmann_json_j, const std::optional<T>& nlohmann_json_t) {
+		if (nlohmann_json_t.has_value()) {
+			nlohmann_json_j = nlohmann_json_t.value();
+		} else {
+			nlohmann_json_j = nullptr;
+		}
+	}
+
+	template<typename T>
+	static void from_json(const nlohmann::json& nlohmann_json_j, std::optional<T>& nlohmann_json_t) {
+		if (nlohmann_json_j != nullptr) {
+			nlohmann_json_t = static_cast<T>(nlohmann_json_j);
+		} else {
+			nlohmann_json_t = std::nullopt;
+		}
+	}
+} // namespace std
+
+namespace GreenCRDT {
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ListType::ListID,
+	id,
+	seq
+)
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ListType::OpAdd,
+	id,
+	parent_left,
+	parent_right,
+	value
+)
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ListType::OpDel,
+	id
+)
+
+} // namespace GreenCRDT
+
+// bc variant <.<
+namespace std {
+	static void to_json(nlohmann::json& nlohmann_json_j, const Doc::Op& nlohmann_json_t) {
+		if (std::holds_alternative<Doc::ListType::OpAdd>(nlohmann_json_t)) {
+			nlohmann_json_j["t"] = "add";
+			nlohmann_json_j["d"] = std::get<Doc::ListType::OpAdd>(nlohmann_json_t);
+		} else if (std::holds_alternative<Doc::ListType::OpDel>(nlohmann_json_t)) {
+			nlohmann_json_j["t"] = "del";
+			nlohmann_json_j["d"] = std::get<Doc::ListType::OpDel>(nlohmann_json_t);
+		}
+	}
+
+	static void from_json(const nlohmann::json& nlohmann_json_j, Doc::Op& nlohmann_json_t) {
+		if (nlohmann_json_j.at("t") == "add") {
+			nlohmann_json_j.at("d").get_to(std::get<Doc::ListType::OpAdd>(nlohmann_json_t));
+		} else if (nlohmann_json_j.at("t") == "del") {
+			nlohmann_json_j.at("d").get_to(std::get<Doc::ListType::OpDel>(nlohmann_json_t));
+		}
+	}
+} // namespace std
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Command,
+	actor,
+	seq,
+	ops
+)
 
 namespace vim {
 
@@ -187,6 +282,9 @@ struct SharedContext {
 	ToxPubKey agent;
 	std::promise<void> agent_set;
 
+	// TODO: this is inefficent
+	std::mutex command_lists_mutex;
+	std::unordered_map<ToxPubKey, std::vector<Command>> command_lists;
 	// remote op queue for receive
 	// local op list for remote lookups
 
@@ -332,6 +430,7 @@ void toxThread(SharedContext* ctx) {
 } // namespace tox
 
 std::ostream& operator<<(std::ostream& out, const ToxPubKey& id) {
+	out << std::hex << static_cast<int>(id.front());
 
 	return out;
 }
@@ -621,12 +720,14 @@ static void self_connection_status_cb(Tox*, TOX_CONNECTION connection_status, vo
 	std::cout << "self_connection_status_cb " << connection_status << "\n";
 }
 
-static void group_custom_packet_cb(Tox* tox, uint32_t group_number, uint32_t peer_id, const uint8_t* data, size_t length, void* user_data) {
+static void group_custom_packet_cb(Tox*, uint32_t group_number, uint32_t peer_id, const uint8_t* data, size_t length, void* user_data) {
 	std::cout << "group_custom_packet_cb\n";
+	SharedContext& ctx = *static_cast<SharedContext*>(user_data);
 }
 
-static void group_custom_private_packet_cb(Tox* tox, uint32_t group_number, uint32_t peer_id, const uint8_t* data, size_t length, void* user_data) {
+static void group_custom_private_packet_cb(Tox*, uint32_t group_number, uint32_t peer_id, const uint8_t* data, size_t length, void* user_data) {
 	std::cout << "group_custom_private_packet_cb\n";
+	SharedContext& ctx = *static_cast<SharedContext*>(user_data);
 }
 
 }
