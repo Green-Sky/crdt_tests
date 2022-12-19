@@ -511,28 +511,43 @@ int main(void) {
 	std::cout << "waiting for agent id\n";
 	ctx.agent_set.get_future().wait();
 	if (ctx.should_quit) {
+		tox_thread.join(); // wait for thread
 		return -1;
 	}
 
 	std::cout << "starting vim ipc server\n";
 
 	if (zed_net_init() != 0) {
+		ctx.should_quit.store(true);
 		std::cerr << "zed_net_init failed: " << zed_net_get_error() << "\n";
+		tox_thread.join(); // wait for thread
 		return -1;
 	}
 
 	std::cout << "initialized zed_net\n";
 
-	const uint16_t port {1337};
+	const uint16_t port_start {1337};
+	const uint16_t port_end {1437};
+	uint16_t port = port_start;
 	zed_net_socket_t listen_socket;
-	if (zed_net_tcp_socket_open(
-		&listen_socket,
-		port, // port
-		0, // non blocking
-		1 // listen
-	) != 0) {
+	bool found_free_port {false};
+	for (; port <= port_end; port++) {
+		if (zed_net_tcp_socket_open(
+			&listen_socket,
+			port, // port
+			0, // non blocking
+			1 // listen
+		) == 0) {
+			found_free_port = true;
+			break;
+		}
+	}
+
+	if (!found_free_port) {
+		ctx.should_quit.store(true);
 		std::cerr << "zed_net_tcp_socket_open failed: " << zed_net_get_error() << "\n";
 		zed_net_shutdown();
+		tox_thread.join(); // wait for thread
 		return -1;
 	}
 
@@ -546,9 +561,11 @@ int main(void) {
 	zed_net_socket_t remote_socket;
 	zed_net_address_t remote_address;
 	if (zed_net_tcp_accept(&listen_socket, &remote_socket, &remote_address) != 0) {
+		ctx.should_quit.store(true);
 		std::cerr << "zed_net_tcp_accept failed: " << zed_net_get_error() << "\n";
 		zed_net_socket_close(&listen_socket);
 		zed_net_shutdown();
+		tox_thread.join(); // wait for thread
 		return -1;
 	}
 
@@ -568,10 +585,12 @@ int main(void) {
 		int64_t bytes_received {0};
 		bytes_received = zed_net_tcp_socket_receive(&remote_socket, buffer->data(), buffer->size());
 		if (bytes_received < 0) {
+			ctx.should_quit.store(true);
 			std::cerr << "zed_net_tcp_socket_receive failed: " << zed_net_get_error() << "\n";
 			zed_net_socket_close(&remote_socket);
 			zed_net_socket_close(&listen_socket);
 			zed_net_shutdown();
+			tox_thread.join(); // wait for thread
 			return -1;
 		} else if (bytes_received == 0) {
 			std::cout << "got 0 bytes?\n";
