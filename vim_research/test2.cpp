@@ -534,6 +534,7 @@ void toxThread(SharedContext* ctx) {
 						}
 
 						if (!buffer.count(seq)) { // not in buffer, skip
+							std::cout << "!!! buffer not empty but not next seq\n";
 							continue;
 						}
 
@@ -969,8 +970,16 @@ int main(void) {
 							seq = ctx.command_frontier[ctx.agent] + 1;
 						}
 						const size_t max_ops {5}; // limit ops per command so we can fit them into packets
-						for (size_t i = 0; i < ops.size(); i+=max_ops, seq++) {
-							std::vector<Doc::Op> tmp_ops {ops.cbegin()+i, ops.cbegin()+i+1};
+						size_t check_op_count {0};
+						for (size_t i = 0; i < ops.size(); seq++) {
+							// TODO: check
+							//size_t chunk_size = std::min(max_ops, ops.size()-i);
+							//std::vector<Doc::Op> tmp_ops {ops.cbegin()+i, ops.cbegin()+i+chunk_size};
+							std::vector<Doc::Op> tmp_ops;
+							for (auto it = ops.cbegin()+i; it != ops.cend() && tmp_ops.size() <= max_ops; it++) {
+								tmp_ops.push_back(*it);
+							}
+
 							assert(!tmp_ops.empty());
 
 							local_command_list.emplace(seq, Command{
@@ -979,7 +988,11 @@ int main(void) {
 								tmp_ops
 							});
 							ctx.command_frontier[ctx.agent] = seq;
+
+							i += tmp_ops.size();
+							check_op_count += tmp_ops.size();
 						}
+						assert(check_op_count == ops.size());
 					}
 					ctx.should_gossip_local.store(true);
 				}
