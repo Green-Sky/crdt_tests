@@ -1,4 +1,3 @@
-#include "toxcore/tox.h"
 #include <crdt/text_document.hpp>
 #include <nlohmann/json.hpp>
 
@@ -286,6 +285,26 @@ echo 'setup done'
 
 } // namespace vim
 
+// visibility hack
+struct RequestCommands {
+	Agent agent;
+	uint64_t after_seq{0};
+	uint64_t until_seq{0};
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RequestCommands,
+	agent,
+	after_seq,
+	until_seq
+)
+
+// hash for unordered_set
+template<>
+struct std::hash<std::pair<uint32_t, Agent>> {
+	std::size_t operator()(std::pair<uint32_t, Agent> const& s) const noexcept {
+		return std::hash<uint32_t>{}(s.first) << 3 ^ std::hash<Agent>{}(s.second);
+	}
+};
+
 struct SharedContext {
 	std::atomic_bool should_quit {false};
 
@@ -309,6 +328,12 @@ struct SharedContext {
 	std::atomic_bool should_gossip_local{false}; // local changes (set by main thread, reset by tox thread)
 	std::unordered_set<ToxPubKey> should_gossip_remote; // list of ids we have new seq for (only modified by tox thread)
 	std::unordered_map<ToxPubKey, uint64_t> heard_gossip; // seq frontiers we have heard about
+
+	// peer ids that requested the last known seq for agent
+	std::unordered_set<std::pair<uint32_t, Agent>> requested_frontier;
+
+	// peer ids that requested a command (range)
+	std::vector<std::pair<uint32_t, RequestCommands>> requested_commands;
 
 	Tox* tox {nullptr};
 	bool tox_dht_online {false};
@@ -350,16 +375,19 @@ namespace pkg {
 
 	using Command = ::Command;
 
-	// request every command for agent after seq (inclusive)
-	struct RequestCommands {
-		Agent agent;
-		uint64_t seq{0};
-	};
+	// request every command for agent after_seq - until_seq (inclusive)
+	//struct RequestCommands {
+		//Agent agent;
+		//uint64_t after_seq{0};
+		//uint64_t until_seq{0};
+	//};
+	using RequestCommands = ::RequestCommands;
 
-	NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RequestCommands,
-		agent,
-		seq
-	)
+	//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RequestCommands,
+		//agent,
+		//after_seq,
+		//until_seq
+	//)
 
 } // namespace pkg
 
@@ -560,8 +588,10 @@ void toxThread(SharedContext* ctx) {
 						// prepend pkgid
 						data.emplace(data.begin(), static_cast<uint8_t>(pkg::PKGID::FRONTIER));
 
-						if (!tox_group_send_custom_packet(ctx->tox, 0, true, data.data(), data.size(), nullptr)) {
-							std::cerr << "failed to send gossip packet of local agent\n";
+						Tox_Err_Group_Send_Custom_Packet send_err{TOX_ERR_GROUP_SEND_CUSTOM_PACKET_OK};
+						if (!tox_group_send_custom_packet(ctx->tox, 0, true, data.data(), data.size(), &send_err)) {
+							std::cerr << "failed to send gossip packet of local agent" << send_err << "\n";
+							assert(send_err != TOX_ERR_GROUP_SEND_CUSTOM_PACKET_TOO_LONG);
 							// TODO: set should_gossip_local back to true?
 						} else {
 							std::cout << "sent gossip of local agent\n";
@@ -572,8 +602,10 @@ void toxThread(SharedContext* ctx) {
 						// prepend pkgid
 						data.emplace(data.begin(), static_cast<uint8_t>(pkg::PKGID::COMMAND));
 
-						if (!tox_group_send_custom_packet(ctx->tox, 0, true, data.data(), data.size(), nullptr)) {
+						Tox_Err_Group_Send_Custom_Packet send_err{TOX_ERR_GROUP_SEND_CUSTOM_PACKET_OK};
+						if (!tox_group_send_custom_packet(ctx->tox, 0, true, data.data(), data.size(), &send_err)) {
 							std::cerr << "failed to send command packet of local agent\n";
+							assert(send_err != TOX_ERR_GROUP_SEND_CUSTOM_PACKET_TOO_LONG);
 						} else {
 							std::cout << "sent command of local agent\n";
 						}
@@ -963,7 +995,7 @@ static void self_connection_status_cb(Tox*, TOX_CONNECTION connection_status, vo
 	std::cout << "self_connection_status_cb " << connection_status << "\n";
 }
 
-static void handle_pkg(SharedContext& ctx, const uint8_t* data, size_t length) {
+static void handle_pkg(SharedContext& ctx, const uint8_t* data, size_t length, uint32_t peer_id) {
 	if (length < 2) {
 		std::cerr << "got too short pkg " << length << "\n";
 		return;
@@ -990,6 +1022,7 @@ static void handle_pkg(SharedContext& ctx, const uint8_t* data, size_t length) {
 		}
 		case pkg::PKGID::REQUEST_FRONTIER: {
 			pkg::RequestFrontier pkg = p_j;
+			ctx.requested_frontier.emplace(peer_id, pkg.agent);
 			break;
 		}
 		case pkg::PKGID::COMMAND: {
@@ -1005,6 +1038,9 @@ static void handle_pkg(SharedContext& ctx, const uint8_t* data, size_t length) {
 		}
 		case pkg::PKGID::REQUEST_COMMANDS: {
 			pkg::RequestCommands pkg = p_j;
+			// TODO: this can lead to double requests
+			// TODO: maybe settle for single seq requests for now?, since they are indivitual packets anyway
+			ctx.requested_commands.push_back(std::make_pair(peer_id, pkg));
 			break;
 		}
 		default:
@@ -1016,13 +1052,13 @@ static void handle_pkg(SharedContext& ctx, const uint8_t* data, size_t length) {
 static void group_custom_packet_cb(Tox*, uint32_t group_number, uint32_t peer_id, const uint8_t* data, size_t length, void* user_data) {
 	std::cout << "group_custom_packet_cb\n";
 	SharedContext& ctx = *static_cast<SharedContext*>(user_data);
-	handle_pkg(ctx, data, length);
+	handle_pkg(ctx, data, length, peer_id);
 }
 
 static void group_custom_private_packet_cb(Tox*, uint32_t group_number, uint32_t peer_id, const uint8_t* data, size_t length, void* user_data) {
 	std::cout << "group_custom_private_packet_cb\n";
 	SharedContext& ctx = *static_cast<SharedContext*>(user_data);
-	handle_pkg(ctx, data, length);
+	handle_pkg(ctx, data, length, peer_id);
 }
 
 }

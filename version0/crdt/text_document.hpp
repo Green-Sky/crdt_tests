@@ -214,7 +214,6 @@ struct TextDocument {
 		if (!differ && list_start == state.list.size() && text_start == text.size()) {
 			return {};
 		}
-
 		//std::cout << "list.size: " << state.list.size() << "(" << getText().size() << ")" << " text.size: " << text.size() << "\n";
 		//std::cout << "list_start: " << list_start << " text_start: " << text_start << "\n";
 
@@ -224,7 +223,9 @@ struct TextDocument {
 		//for (; list_end > 0 && text_end > 0 && list_end >= list_start && text_end >= text_start;) {
 		//while (list_end >= list_start && text_end >= text_start) {
 		size_t list_end_counted = 0;
-		while (list_start_counted - list_end_counted > state.doc_size && text_end >= text_start) {
+		differ = false; // var reuse
+		//while (list_start_counted - list_end_counted > state.doc_size && text_end >= text_start) {
+		while (state.doc_size - list_start_counted > list_end_counted && text_end >= text_start) {
 			// jump over tombstones
 			if (!state.list[list_end-1].value.has_value()) {
 				list_end--;
@@ -232,6 +233,7 @@ struct TextDocument {
 			}
 
 			if (state.list[list_end-1].value.value() != text[text_end-1]) {
+				differ = true;
 				break;
 			}
 
@@ -240,20 +242,29 @@ struct TextDocument {
 			list_end_counted++;
 		}
 
+		if (!differ && text_start == text_end+1) {
+			// we ran into eachother without seeing the different char
+			// TODO: do we need to increment list_end? text_end?
+			list_end++;
+		}
+
 		//std::cout << "list_end: " << list_end << " text_end: " << text_end << "\n";
+		//std::cout << "substring before: " << text.substr(text_start, text.size() - state.doc_size) << "\n";
 
 		std::vector<Op> ops;
 
 		// 1. clear range (del all list_start - list_end)
 		if (list_start <= list_end && list_start < state.list.size()) {
+			//list_end += list_start == list_end;
 			ops = delRange(
 				state.list[list_start].id,
-				(list_start == list_end ? list_end+1 : list_end) < state.list.size() ? std::make_optional(state.list[list_end].id) : std::nullopt
+				list_end < state.list.size() ? std::make_optional(state.list[list_end].id) : std::nullopt
 			);
 			//std::cout << "deleted: " << ops.size() << "\n";
 		}
 
 		//std::cout << "text between: " << getText() << "\n";
+		//std::cout << "substring between: " << text.substr(text_start, text.size() - state.doc_size) << "\n";
 
 		// 2. add range (add all text_start - text_end)
 		if (state.doc_size < text.size()) {
@@ -266,7 +277,6 @@ struct TextDocument {
 			ops.insert(ops.end(), tmp_add_ops.begin(), tmp_add_ops.end());
 		}
 
-		//assert(false && "implement me");
 		return ops;
 	}
 };

@@ -418,8 +418,9 @@ void testBugDoubleDel(void) {
 
 	{
 		std::string_view new_text{"a"};
-		doc.merge(new_text);
+		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
 	}
 
 	{
@@ -445,20 +446,23 @@ void testBugSameDel(void) {
 
 	{
 		std::string_view new_text{"a"};
-		doc.merge(new_text);
+		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
 	}
 
 	{
 		std::string_view new_text{"aa"};
 		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
 	}
 
 	{
 		std::string_view new_text{"a"};
 		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
 	}
 }
 
@@ -468,32 +472,122 @@ void testBugSameDel2(void) {
 
 	{
 		std::string_view new_text{"a"};
-		doc.merge(new_text);
+		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
 	}
 
 	{
 		std::string_view new_text{"aa"};
 		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
 	}
 
 	{
 		std::string_view new_text{"aaa"};
 		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
 	}
 
 	{
 		std::string_view new_text{"aa"};
 		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
 	}
 
 	{
 		std::string_view new_text{"a"};
 		const auto ops = doc.merge(new_text);
 		assert(doc.getText() == new_text);
+		assert(ops.size() == 1);
+	}
+}
+
+void testMulti1(void) {
+	Doc docA;
+	docA.local_agent = 'A';
+
+	Doc docB;
+	docB.local_agent = 'B';
+
+	// state A
+	{
+		std::string_view new_text{"iiiiiii"};
+		const auto ops = docA.merge(new_text);
+		assert(docA.getText() == new_text);
+
+		assert(docB.apply(ops));
+
+		assert(docB.getText() == new_text);
+		assert(docB.state.doc_size == docA.state.doc_size);
+		assert(docB.state.list.size() == docA.state.list.size());
+	}
+
+	// now B inserts b
+	{
+		std::string_view new_text{"iiibiiii"};
+		const auto ops = docB.merge(new_text);
+		assert(docB.getText() == new_text);
+		assert(ops.size() == 1); // 1 new inserted char, nothing to delete
+
+		assert(docA.apply(ops));
+
+		assert(docA.getText() == new_text);
+	}
+}
+
+void testPaste1(void) {
+	Doc docA;
+	docA.local_agent = 'A';
+
+	{
+		std::string_view new_text{"iiiiiii"};
+		const auto ops = docA.merge(new_text);
+		assert(ops.size() == 7);
+		assert(docA.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"iiiiiii\n"};
+		const auto ops = docA.merge(new_text);
+		assert(ops.size() == 1);
+		assert(docA.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"iiiiiii\niiiiiii"};
+		const auto ops = docA.merge(new_text);
+		assert(ops.size() == 7);
+		assert(docA.getText() == new_text);
+	}
+}
+
+void testPaste2(void) {
+	Doc docA;
+	docA.local_agent = 'A';
+
+	{
+		std::string_view new_text{"aiiiiib"};
+		const auto ops = docA.merge(new_text);
+		assert(ops.size() == 7);
+		assert(docA.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"aiiiiib\n"};
+		const auto ops = docA.merge(new_text);
+		assert(ops.size() == 1);
+		assert(docA.getText() == new_text);
+	}
+
+	{
+		std::string_view new_text{"aiiiiib\naiiiiib"};
+		const auto ops = docA.merge(new_text);
+		assert(ops.size() == 7);
+		assert(docA.getText() == new_text);
 	}
 }
 
@@ -578,6 +672,27 @@ int main(void) {
 	{
 		std::cout << "testBugSameDel2:\n";
 		testBugSameDel2();
+	}
+
+	std::cout << std::string(40, '=') << "\n";
+
+	{
+		std::cout << "testMulti1:\n";
+		testMulti1();
+	}
+
+	std::cout << std::string(40, '=') << "\n";
+
+	{
+		std::cout << "testPaste1:\n";
+		testPaste1();
+	}
+
+	std::cout << std::string(40, '=') << "\n";
+
+	{
+		std::cout << "testPaste2:\n";
+		testPaste2();
 	}
 
 	return 0;
