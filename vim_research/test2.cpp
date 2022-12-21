@@ -221,10 +221,18 @@ function! GreenCRDTCheckTimeAndFetch()
 		" dont update when inserting or visual (or atleast not in visual)
 		if mode() is# 'n'
 			let l:response = ch_evalexpr(b:channel, [{'cmd': 'fetch_changes'}])
-			for [line_number, line] in l:response
-				call setline(line_number, line)
-			endfor
+			" TODO: dont use empty as an indicator
+			if ! empty(l:response)
+				for [line_number, line] in l:response
+					call setline(line_number, line)
+				endfor
 
+				let l:buffer_line_count = line('$')
+				let l:new_line_count = len(l:response)
+				if l:buffer_line_count > new_line_count
+					call deletebufline(bufnr(), l:new_line_count+1, buffer_line_count)
+				endif
+			endif
 		endif
 
 		let b:green_crdt_fetch_timer = timer_start(503, 'GreenCRDTFetchTimerCallback')
