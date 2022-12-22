@@ -1,4 +1,4 @@
-#include <crdt/text_document.hpp>
+#include <green_crdt/v0/text_document.hpp>
 
 #include <numeric>
 #include <optional>
@@ -9,8 +9,8 @@
 
 // single letter agent, for testing only
 using Agent = char;
-using Doc = GreenCRDT::TextDocument<Agent>;
-using Op = GreenCRDT::TextDocument<Agent>::Op;
+using Doc = GreenCRDT::V0::TextDocument<Agent>;
+using Op = Doc::Op;
 using ListType = Doc::ListType;
 
 // maybe switch it up?

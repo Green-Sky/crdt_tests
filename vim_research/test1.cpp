@@ -1,4 +1,4 @@
-#include <crdt/text_document.hpp>
+#include <green_crdt/v0/text_document.hpp>
 #include <nlohmann/json.hpp>
 
 extern "C" {
@@ -15,7 +15,7 @@ extern "C" {
 // single letter agent, for testing only
 //using Agent = char;
 using Agent = uint16_t; // tmp local port
-using Doc = GreenCRDT::TextDocument<Agent>;
+using Doc = GreenCRDT::V0::TextDocument<Agent>;
 using ListType = Doc::ListType;
 
 std::ostream& operator<<(std::ostream& out, const std::optional<ListType::ListID>& id) {

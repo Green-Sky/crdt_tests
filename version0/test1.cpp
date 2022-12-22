@@ -1,5 +1,5 @@
-#include <crdt/list.hpp>
-#include <crdt/text_document.hpp>
+#include <green_crdt/v0/list.hpp>
+#include <green_crdt/v0/text_document.hpp>
 
 #include <numeric>
 #include <random>
@@ -8,7 +8,7 @@
 
 // single letter agent, for testing only
 using Agent = char;
-using DocType = GreenCRDT::TextDocument<Agent>;
+using DocType = GreenCRDT::V0::TextDocument<Agent>;
 using ListType = DocType::ListType;
 
 void testSingle1(void) {

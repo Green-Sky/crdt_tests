@@ -6,7 +6,7 @@
 
 //#include <iostream> // debug
 
-namespace GreenCRDT {
+namespace GreenCRDT::V0 {
 
 template<typename AgentType>
 struct TextDocument {
@@ -281,5 +281,5 @@ struct TextDocument {
 	}
 };
 
-} // GreenCRDT
+} // GreenCRDT::V0
 

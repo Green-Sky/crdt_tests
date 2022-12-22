@@ -1,4 +1,4 @@
-#include <crdt/text_document.hpp>
+#include <green_crdt/v0/text_document.hpp>
 #include <nlohmann/json.hpp>
 
 extern "C" {
@@ -59,7 +59,7 @@ struct std::hash<ToxPubKey> {
 //using Agent = char;
 //using Agent = uint16_t; // tmp local port
 using Agent = ToxPubKey;
-using Doc = GreenCRDT::TextDocument<Agent>;
+using Doc = GreenCRDT::V0::TextDocument<Agent>;
 using ListType = Doc::ListType;
 
 struct Command {
@@ -89,7 +89,7 @@ namespace std {
 	}
 } // namespace std
 
-namespace GreenCRDT {
+namespace GreenCRDT::V0 {
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ListType::ListID,
 	id,
@@ -107,7 +107,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ListType::OpDel,
 	id
 )
 
-} // namespace GreenCRDT
+} // namespace GreenCRDT::V0
 
 // bc variant <.<
 namespace std {

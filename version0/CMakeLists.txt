@@ -10,17 +10,17 @@ target_include_directories(crdt_version0 INTERFACE "${PROJECT_SOURCE_DIR}")
 
 ########################################
 
-add_executable(test1
+add_executable(v0_test1
 	./test1.cpp
 )
 
-target_link_libraries(test1 PUBLIC crdt_version0)
+target_link_libraries(v0_test1 PUBLIC crdt_version0)
 
 ########################################
 
-add_executable(test2
+add_executable(v0_test2
 	./test2.cpp
 )
 
-target_link_libraries(test2 PUBLIC crdt_version0)
+target_link_libraries(v0_test2 PUBLIC crdt_version0)
 

@@ -8,7 +8,7 @@
 
 #include <cassert>
 
-namespace GreenCRDT {
+namespace GreenCRDT::V0 {
 
 template<typename ValueType, typename AgentType>
 struct List {
@@ -243,5 +243,5 @@ struct List {
 	}
 };
 
-} // GreenCRDT
+} // GreenCRDT::V0
 
