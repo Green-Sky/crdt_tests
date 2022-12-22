@@ -235,7 +235,7 @@ function! GreenCRDTCheckTimeAndFetch()
 			endif
 		endif
 
-		let b:green_crdt_fetch_timer = timer_start(503, 'GreenCRDTFetchTimerCallback')
+		let b:green_crdt_fetch_timer = timer_start(203, 'GreenCRDTFetchTimerCallback')
 	endif
 endfunction
 )"
@@ -287,7 +287,7 @@ delfunction GreenCRDTSetupEvents
 )"
 
 R"(
-let b:green_crdt_fetch_timer = timer_start(900, 'GreenCRDTFetchTimerCallback')
+let b:green_crdt_fetch_timer = timer_start(300, 'GreenCRDTFetchTimerCallback')
 
 echo 'setup done'
 )");
