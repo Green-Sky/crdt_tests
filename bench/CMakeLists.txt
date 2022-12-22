@@ -15,14 +15,12 @@ target_link_libraries(crdt_bench_jpaper_v0 PUBLIC
 
 ########################################
 
-if (FALSE)
 add_executable(crdt_bench_jpaper_v1
-	./test1.cpp
+	./v1_jpaper.cpp
 )
 
 target_link_libraries(crdt_bench_jpaper_v1 PUBLIC
 	crdt_version1
 	nlohmann_json::nlohmann_json
 )
-endif()
 

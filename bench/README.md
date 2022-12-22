@@ -16,12 +16,12 @@ the json contains:
 ## baseline ( just walking through the json, no insertions )
 
 - g++9 -g :
-	- 23.0s
-	- 22.6s
+	- 23.0s		~11294 ops/s
+	- 22.6s		~11494 ops/s
 	- 23.0s
 
 - g++9 -O3 -DNDEBUG :
-	- 9.6s
+	- 9.6s		~27060 ops/s
 	- 9.7s
 	- 9.7s
 
@@ -29,10 +29,16 @@ the json contains:
 ## version0
 
 - g++9 -g -O2 :
-	- 10m35s
+	- 10m35s	~409 ops/s
 
 - g++9 -O3 -DNDEBUG :
-	- 8m7s
+	- 8m7s		~533 ops/s
 
 ## version1
+
+- g++9 -g -O2 :
+	- 5m23s		~804 ops/s
+
+- g++9 -O3 -DNDEBUG :
+	- 4m7s		~1051 ops/s
 
