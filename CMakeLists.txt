@@ -39,5 +39,7 @@ add_subdirectory(./prototyping EXCLUDE_FROM_ALL)
 
 add_subdirectory(./version0)
 
+add_subdirectory(./bench)
+
 add_subdirectory(./vim_research)
 

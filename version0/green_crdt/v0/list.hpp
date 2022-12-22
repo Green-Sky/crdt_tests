@@ -8,6 +8,14 @@
 
 #include <cassert>
 
+#if !defined(extra_assert)
+	#if defined(EXTRA_ASSERTS) && EXTRA_ASSERTS == 1
+		#define extra_assert(...) assert(__VA_ARGS__)
+	#else
+		#define extra_assert(...) void(0)
+	#endif
+#endif
+
 namespace GreenCRDT::V0 {
 
 template<typename ValueType, typename AgentType>
@@ -71,7 +79,9 @@ struct List {
 	std::map<AgentType, uint64_t> last_seen_seq;
 
 	std::optional<size_t> findIdx(const ListID& list_id) const {
+//#if defined(EXTRA_ASSERTS) && EXTRA_ASSERTS == 1
 		//verify(); // too expensive
+//#endif
 		for (size_t i = 0; i < list.size(); i++) {
 			if (list[i].id == list_id) {
 				return i;
