@@ -38,6 +38,7 @@ endif()
 add_subdirectory(./prototyping EXCLUDE_FROM_ALL)
 
 add_subdirectory(./version0)
+add_subdirectory(./version1)
 
 add_subdirectory(./bench)
 
