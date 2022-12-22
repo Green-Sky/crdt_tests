@@ -1,6 +1,6 @@
 #define EXTRA_ASSERTS 0
 
-#include <green_crdt/v1/list.hpp>
+#include <green_crdt/v2/list.hpp>
 #include <nlohmann/json.hpp>
 
 #include <unordered_map>
@@ -10,8 +10,7 @@
 #include <cassert>
 
 using ActorID = std::array<uint8_t, 32>;
-//using Doc = GreenCRDT::V0::TextDocument<ActorID>;
-using List = GreenCRDT::V1::List<char, ActorID>;
+using List = GreenCRDT::V2::List<char, ActorID>;
 
 template<>
 struct std::hash<ActorID> {
@@ -106,6 +105,7 @@ int main(void) {
 	for (std::string line; std::getline(file, line); ) {
 		nlohmann::json j_entry = nlohmann::json::parse(line);
 		const ActorID actor = ActorIDFromStr(static_cast<const std::string&>(j_entry["actor"]));
+		const size_t actor_idx = list.findActor(actor).value_or(0u);
 		uint64_t op_seq = j_entry["startOp"];
 		for (const auto& j_op : j_entry["ops"]) {
 			if (j_op["action"] == "set") {
@@ -132,9 +132,14 @@ int main(void) {
 					} else { // we have a parrent
 						extra_assert(static_cast<const std::string&>(j_op["value"]).size() == 1);
 
+						size_t hint_last_insert {0};
+						if (list.last_inserted_idx.count(actor_idx)) {
+							hint_last_insert = list.last_inserted_idx[actor_idx];
+						}
+
 						// split parent into seq and actor
 						const auto parent_left = JObjFromStr(static_cast<const std::string&>(j_parent));
-						auto idx_opt = list.findIdx({parent_left.id, map_seq[parent_left.id][parent_left.seq]});
+						auto idx_opt = list.findIdx({parent_left.id, map_seq[parent_left.id][parent_left.seq]}, hint_last_insert);
 						assert(idx_opt.has_value());
 
 						std::optional<List::ListID> parent_left_id;
@@ -185,6 +190,9 @@ int main(void) {
 	std::cout << "total inserts: " << g_total_inserts << "\n";
 	std::cout << "total deletes: " << g_total_deletes << "\n";
 	std::cout << "total ops: " << g_total_inserts + g_total_deletes << "\n";
+
+	//std::cout << "find_hint: " << list._stat_find_with_hint << "\n";
+	//std::cout << "find_hint_hit: " << list._stat_find_with_hint_hit << "\n";
 
 	// checked, looks correct
 #if 0

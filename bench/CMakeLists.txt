@@ -24,3 +24,14 @@ target_link_libraries(crdt_bench_jpaper_v1 PUBLIC
 	nlohmann_json::nlohmann_json
 )
 
+########################################
+
+add_executable(crdt_bench_jpaper_v2
+	./v2_jpaper.cpp
+)
+
+target_link_libraries(crdt_bench_jpaper_v2 PUBLIC
+	crdt_version2
+	nlohmann_json::nlohmann_json
+)
+

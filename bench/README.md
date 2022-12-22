@@ -34,11 +34,19 @@ the json contains:
 - g++9 -O3 -DNDEBUG :
 	- 8m7s		~533 ops/s
 
-## version1
+## version1 - actor index
 
 - g++9 -g -O2 :
-	- 5m23s		~804 ops/s
+	- 4m1s		~1077 ops/s
 
 - g++9 -O3 -DNDEBUG :
-	- 4m7s		~1051 ops/s
+	- 4m5s		~1060 ops/s
+
+## version2 - find with hint, cache last insert and use as hint
+
+- g++9 -g -O2 :
+	- 3m38s		~1191 ops/s
+
+- g++9 -O3 -DNDEBUG :
+	- 3m43s		~1164 ops/s
 
