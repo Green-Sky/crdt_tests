@@ -35,3 +35,14 @@ target_link_libraries(crdt_bench_jpaper_v2 PUBLIC
 	nlohmann_json::nlohmann_json
 )
 
+########################################
+
+add_executable(crdt_bench_jpaper_v3
+	./v3_jpaper.cpp
+)
+
+target_link_libraries(crdt_bench_jpaper_v3 PUBLIC
+	crdt_version3
+	nlohmann_json::nlohmann_json
+)
+

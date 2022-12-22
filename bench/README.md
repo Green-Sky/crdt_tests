@@ -50,3 +50,11 @@ the json contains:
 - g++9 -O3 -DNDEBUG :
 	- 3m43s		~1164 ops/s
 
+## version3 - SoA, 1 array only ids, 1 array rest (parents, data)
+
+- g++9 -g -O2 :
+	- 3m36s		~1202 ops/s
+
+- g++9 -O3 -DNDEBUG :
+	- 3m44s		~1159 ops/s
+
