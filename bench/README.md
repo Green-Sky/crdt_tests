@@ -52,6 +52,9 @@ the json contains:
 
 ## version3 - SoA, 1 array only ids, 1 array rest (parents, data)
 
+- g++9 -g :
+	- 4m19s		~1003 ops/s
+
 - g++9 -g -O2 :
 	- 3m36s		~1202 ops/s
 
