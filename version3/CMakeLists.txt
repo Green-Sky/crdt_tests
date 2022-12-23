@@ -18,9 +18,9 @@ target_link_libraries(v3_test1 PUBLIC crdt_version3)
 
 ########################################
 
-#add_executable(v3_test2
-	#./test2.cpp
-#)
+add_executable(v3_test2
+	./test2.cpp
+)
 
-#target_link_libraries(v3_test2 PUBLIC crdt_version3)
+target_link_libraries(v3_test2 PUBLIC crdt_version3)
 

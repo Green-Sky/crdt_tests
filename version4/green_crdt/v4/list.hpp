@@ -16,7 +16,7 @@
 	#endif
 #endif
 
-namespace GreenCRDT::V3 {
+namespace GreenCRDT::V4 {
 
 template<typename ValueType, typename ActorType>
 struct List {
@@ -56,17 +56,21 @@ struct List {
 	// internally the index into this array is used to refer to an actor
 	std::vector<ActorType> _actors;
 
-	struct Entry_Data {
+	// range
+	struct Entry {
+		ListIDInternal id;
+
+		std::vector<ValueType> values;
+
+		bool deleted {false};
+
 		// Yjs
 		std::optional<ListIDInternal> parent_left;
 		std::optional<ListIDInternal> parent_right;
-
-		// might be deleted (yes, *sigh*, crtds need tombstones)
-		std::optional<ValueType> value;
 	};
 
-	std::vector<ListIDInternal> _list_ids;
-	std::vector<Entry_Data> _list_data;
+	// TODO: use something better, edit: this seems fine
+	std::vector<Entry> _list;
 
 	// number of not deleted entries
 	size_t _doc_size {0};
@@ -80,7 +84,7 @@ struct List {
 	//size_t _stat_find_with_hint{0};
 	//size_t _stat_find_with_hint_hit{0};
 
-	[[nodiscard]] std::optional<size_t> findActor(const ActorType& actor) const {
+	std::optional<size_t> findActor(const ActorType& actor) const {
 		for (size_t i = 0; i < _actors.size(); i++) {
 			if (_actors[i] == actor) {
 				return i;
@@ -89,11 +93,15 @@ struct List {
 		return std::nullopt;
 	}
 
-	[[nodiscard]] std::optional<size_t> findIdx(const ListIDInternal& list_id) const {
+	std::optional<size_t> findIdx(const ListIDInternal& list_id) const {
 		extra_assert(verify());
 
-		for (size_t i = 0; i < _list_ids.size(); i++) {
-			if (_list_ids[i] == list_id) {
+		for (size_t i = 0; i < _list.size(); i++) {
+			if (
+				_list[i].id.actor_idx == list_id && // same actor
+				list_id.seq >= _list[i].id.seq && // in range seen from left
+				list_id.seq < _list[i].id.seq + _list[i].values.size() // in range seen from right
+			) {
 				return i;
 			}
 		}
@@ -102,45 +110,33 @@ struct List {
 	}
 
 	// search close to hint first
-	[[nodiscard]] std::optional<size_t> findIdx(const ListIDInternal& list_id, size_t hint) const {
+	std::optional<size_t> findIdx(const ListIDInternal& list_id, size_t hint) const {
 		extra_assert(verify());
 
 		//_stat_find_with_hint++;
 
-		// TODO: find some good magic values here
-		// total: 364150
-		// 2-9 hits: 360164 (3m54)
-		// 1-9 hits: 360161 (3m53)
-		// 1-2 hits: 359800 (3m55s)
-		// 0-2 hits: 359763 (3m54s)
-		// changed from loop to single if:
-		// 1-2 hits: 359800 (3m50s)
-		// 1-4 hits: 359928 (3m51s) (after cond reorder: 3m49s)
+		// TODO: find NEW magic values
 		static constexpr size_t c_hint_pre = 1;
 		static constexpr size_t c_hint_post = 4;
 
-		{ // go back 2, so we dont miss // TODO: is this really needed
-			//for (size_t i = 0; hint > 0 && i < c_hint_pre; hint--, i++) {}
-			if (hint >= c_hint_pre) {
-				hint -= c_hint_pre;
-			}
+		if (hint >= c_hint_pre) {
+			hint -= c_hint_pre;
 		}
 
 		const size_t max_at_hint = hint + c_hint_post; // how many positions we check at hint, before falling back to full lookup
 
-		for (size_t i = hint; i <= max_at_hint && i < _list_ids.size(); i++) {
-			if (_list_ids[i] == list_id) {
+		for (size_t i = hint; i <= max_at_hint && i < _list.size(); i++) {
+			if (_list[i].id == list_id) {
 				//_stat_find_with_hint_hit++;
 				return i;
 			}
 		}
 
 		// fall back to normal search
-		// TODO: in some cases we scan the list twice now!!
 		return findIdx(list_id);
 	}
 
-	[[nodiscard]] std::optional<size_t> findIdx(const ListID& list_id) const {
+	std::optional<size_t> findIdx(const ListID& list_id) const {
 		extra_assert(verify());
 
 		const auto actor_idx_opt = findActor(list_id.id);
@@ -153,7 +149,7 @@ struct List {
 		return findIdx(tmp_id);
 	}
 
-	[[nodiscard]] std::optional<size_t> findIdx(const ListID& list_id, size_t hint) const {
+	std::optional<size_t> findIdx(const ListID& list_id, size_t hint) const {
 		extra_assert(verify());
 
 		const auto actor_idx_opt = findActor(list_id.id);
@@ -169,7 +165,6 @@ struct List {
 	// returns false if missing OPs
 	// based on YjsMod https://github.com/josephg/reference-crdts/blob/9f4f9c3a97b497e2df8ae4473d1e521d3c3bf2d2/crdts.ts#L293-L348
 	// which is a modified Yjs(YATA) algo
-	// TODO: idx_hint
 	bool add(const ListID& list_id, const ValueType& value, const std::optional<ListID>& parent_left, const std::optional<ListID>& parent_right) {
 		extra_assert(verify());
 
@@ -200,7 +195,7 @@ struct List {
 		}
 
 		size_t insert_idx = 0;
-		if (_list_ids.empty()) {
+		if (_list.empty()) {
 			if (parent_left.has_value() || parent_right.has_value()) {
 				// empty, missing parents
 				return false;
@@ -221,7 +216,7 @@ struct List {
 			const size_t left_idx_hint = insert_idx;
 
 			// find right
-			size_t right_idx = _list_ids.size();
+			size_t right_idx = _list.size();
 			if (parent_right.has_value()) {
 				auto tmp_right = findIdx(parent_right.value(), left_idx_hint);
 				if (!tmp_right.has_value()) {
@@ -241,11 +236,11 @@ struct List {
 					break;
 				}
 				// we ran past right o.o ?
-				if (insert_idx == _list_ids.size()) {
+				if (insert_idx == _list.size()) {
 					break;
 				}
 
-				const Entry_Data& at_i = _list_data[i];
+				const Entry& at_i = _list[i];
 				// parents left and right
 				std::optional<size_t> i_left_idx {std::nullopt};
 				if (at_i.parent_left.has_value()) {
@@ -268,7 +263,7 @@ struct List {
 					break;
 				} else if (i_left_idx == left_idx_opt) {
 					// get i parent_right
-					size_t i_right_idx = _list_ids.size();
+					size_t i_right_idx = _list.size();
 					if (at_i.parent_right.has_value()) {
 						auto tmp_right = findIdx(at_i.parent_right.value(), insert_idx);
 						if (!tmp_right.has_value()) {
@@ -282,7 +277,7 @@ struct List {
 						scanning = true;
 					} else if (i_right_idx == right_idx) {
 						// actor id tie breaker
-						if (_actors[actor_idx] < _actors[_list_ids[i].actor_idx]) {
+						if (_actors[actor_idx] < _actors[at_i.id.actor_idx]) {
 							break;
 						} else {
 							scanning = false;
@@ -297,9 +292,11 @@ struct List {
 		}
 
 		{ // actual insert
-			_list_ids.emplace(_list_ids.begin() + insert_idx, ListIDInternal{actor_idx, list_id.seq});
+			Entry new_entry;
 
-			Entry_Data new_entry;
+			new_entry.id.actor_idx = actor_idx;
+			new_entry.id.seq = list_id.seq;
+
 			if (parent_left.has_value()) {
 				new_entry.parent_left = ListIDInternal{findActor(parent_left.value().id).value(), parent_left.value().seq};
 			}
@@ -310,7 +307,7 @@ struct List {
 
 			new_entry.value = value;
 
-			_list_data.emplace(_list_data.begin() + insert_idx, new_entry);
+			_list.emplace(_list.begin() + insert_idx, new_entry);
 			_last_inserted_idx[actor_idx] = insert_idx;
 		}
 
@@ -331,14 +328,14 @@ struct List {
 			return false;
 		}
 
-#if 0
 		const ListIDInternal tmp_id {actor_idx_opt.value(), id.seq};
-		for (auto& it : list) {
+
+		for (auto& it : _list) {
 			if (it.id == tmp_id) {
 				if (it.value.has_value()) {
 					it.value.reset();
 
-					doc_size--;
+					_doc_size--;
 					extra_assert(verify());
 					return true;
 				} else {
@@ -347,56 +344,18 @@ struct List {
 				}
 			}
 		}
-#endif
-		// TODO: actually test deletes lol
-		const auto idx_opt = findIdx(id);
-		if (idx_opt.has_value()) {
-			auto& it = _list_data[idx_opt.value()];
-			if (it.value.has_value()) {
-				it.value.reset();
 
-				_doc_size--;
-				extra_assert(verify());
-				return true;
-			} else {
-				extra_assert(verify());
-				return false; // TODO: allow double deletes?,,,, need ids
-			}
-		}
-
-		// not found
 		extra_assert(verify());
 		return false;
 	}
 
-	[[nodiscard]] bool empty(void) const {
-		return _list_ids.empty();
-	}
-
-	[[nodiscard]] size_t size(void) const {
-		return _list_ids.size();
-	}
-
-	[[nodiscard]] ListIDInternal getIDInternal(size_t idx) const {
-		return _list_ids.at(idx);
-	}
-
-	[[nodiscard]] const ListID getID(size_t idx) const {
-		return {_actors.at(_list_ids.at(idx).actor_idx), _list_ids.at(idx).seq};
-	}
-
-	[[nodiscard]] const std::optional<ValueType>& getValue(size_t idx) const {
-		return _list_data.at(idx).value;
-	}
-
-	// returns the size of alive entries
-	[[nodiscard]] size_t getDocSize(void) const {
+	size_t getDocSize(void) const {
 		return _doc_size;
 	}
 
-	[[nodiscard]] std::vector<ValueType> getArray(void) const {
+	std::vector<ValueType> getArray(void) const {
 		std::vector<ValueType> array;
-		for (const auto& e : _list_data) {
+		for (const auto& e : _list) {
 			if (e.value.has_value()) {
 				array.push_back(e.value.value());
 			}
@@ -407,12 +366,8 @@ struct List {
 
 	// TODO: only in debug?
 	bool verify(void) const {
-		if (_list_ids.size() != _list_data.size()) {
-			return false;
-		}
-
 		size_t actual_size = 0;
-		for (const auto& it : _list_data) {
+		for (const auto& it : _list) {
 			if (it.value.has_value()) {
 				actual_size++;
 			}
